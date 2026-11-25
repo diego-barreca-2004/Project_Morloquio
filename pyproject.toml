@@ -9,7 +9,10 @@ dependencies = [
     "geopandas>=1.2.0",
     "httpx>=0.28.1",
     "mercantile>=1.2.1",
+    "numba>=0.68.1",
+    "numpy>=2.5.5",
     "osmium>=4.3.2",
+    "pandas>=3.1.1",
     "pillow>=13.0.0",
     "pyogrio>=0.13.0",
     "pyproj>=3.8.0",
@@ -21,6 +24,9 @@ dependencies = [
     "shapely>=2.2.0",
     "skan>=0.13.1",
 ]
+
+[project.scripts]
+morloquio = "morloquio.cli:main"
 
 [build-system]
 requires = ["hatchling"]
