@@ -39,11 +39,12 @@ def _tile(i):
     )
 
 
-def _zip_for(tiles, extra_members=()):
+def _zip_for(tiles, extra_members=(), empty=()):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         for tav, contratto in tiles:
-            zf.writestr(f"calabria_{contratto}_{tav}_DTM.tiff", f"TIFF-{tav}".encode())
+            body = b"" if tav in empty else f"TIFF-{tav}".encode()
+            zf.writestr(f"calabria_{contratto}_{tav}_DTM.tiff", body)
         zf.writestr("area_selezionata/tile_selezionate.csv", "x")
         for name, data in extra_members:
             zf.writestr(name, data)
@@ -53,12 +54,13 @@ def _zip_for(tiles, extra_members=()):
 class FakePst:
     """Simula griglia e API di download PST: una sessione per POST, uno zip con le tavole richieste."""
 
-    def __init__(self, bad_batches=(), reason="OK", extra_members=()):
+    def __init__(self, bad_batches=(), reason="OK", extra_members=(), empty=()):
         self.posts = []
         self.acks = []
         self.bad_batches = set(bad_batches)
         self.reason = reason
         self.extra_members = extra_members
+        self.empty = set(empty)
         self.sessions = {}
 
     def handler(self, request: httpx.Request) -> httpx.Response:
@@ -77,7 +79,7 @@ class FakePst:
             return httpx.Response(200)
         if request.method == "GET" and "/file/" in url:
             sid = url.split("/")[-3]
-            return httpx.Response(200, content=_zip_for(self.sessions[sid], self.extra_members))
+            return httpx.Response(200, content=_zip_for(self.sessions[sid], self.extra_members, self.empty))
         if request.method == "GET" and url.startswith(API + "/"):
             sid = url.rsplit("/", 1)[-1]
             raw = f"http://mase-api-gateway.apps.dxap-prod.ocp.mase.priv/api/v1/downloads/{sid}/file/9"
@@ -230,3 +232,22 @@ def test_same_tavola_two_contracts_kept_apart(spec, data_dir):
     paths = fetch_product(_client(fake.handler), spec, "dtm_1x1", [a, b])
     assert sorted(p.name for p in paths) == ["D38071567_0101_c140.tif", "D38071567_0101_c77.tif"]
     assert [len(p["tileList"]) for p in fake.posts] == [1, 1]  # contratti diversi in sessioni diverse
+
+
+def test_list_tiles_skips_blank_contract():
+    blank = _feature(312785, 3807, 1568)
+    blank["attributes"]["contratto"] = " "
+    blank["attributes"]["data"] = " "
+    page = {"features": [_feature(311806, 3807, 1567), blank]}
+    tiles = list_tiles(_client(lambda r: httpx.Response(200, json=page)), (15.62, 38.03, 15.75, 38.12), GRID)
+    assert [t.tile_id for t in tiles] == ["N3807E01567"]  # cella segnaposto senza rilievo: niente download
+
+
+def test_empty_zip_member_not_written(spec, data_dir):
+    tile = _tile(0)
+    fake = FakePst(empty={_tile(1).tavola})
+    empty = PstTile(1001, _tile(1).tavola, "Calabria", "141", "090313", _tile(1).tile_id)
+    paths = fetch_product(_client(fake.handler), spec, "dtm_1x1", [tile, empty])
+    root = data_dir / "raw" / "pst_lidar" / "dtm_1x1"
+    assert [p.name for p in paths] == [tile.filename]
+    assert not (root / empty.filename).exists()

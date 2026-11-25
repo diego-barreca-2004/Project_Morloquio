@@ -19,6 +19,7 @@ from morloquio.common.aoi import AOI
 from morloquio.common.grid import neighbors, pst_tavola_for, tile_bounds
 from morloquio.common.paths import processed_dir, raw_dir
 from morloquio.common.runlog import get_logger
+from morloquio.ingest.restore import restored_source
 
 HALO_M = 64
 LIDAR_LAYERS = {"dtm_1x1": "dtm", "dsm_first_1x1": "dsm_first", "dsm_last_1x1": "dsm_last"}
@@ -65,7 +66,8 @@ def pst_sources_for(tile_id: str) -> dict[str, list[Path]]:
         root = raw_dir("pst_lidar") / product
         files = root.glob("*.tif") if root.exists() else []
         # nome file: <tavola>_c<contratto>.tif (vedi PstTile.filename)
-        out[product] = sorted(p for p in files if p.stem.rsplit("_c", 1)[0] in tavole)
+        # i file da 0 byte sono segnaposto di celle senza rilievo (vedi adapter PST)
+        out[product] = sorted(p for p in files if p.stem.rsplit("_c", 1)[0] in tavole and p.stat().st_size > 0)
     return out
 
 
@@ -83,8 +85,9 @@ def _mosaic(
     bands: int,
     resampling: Resampling,
 ) -> np.ndarray:
+    """Combina le sorgenti "primo valido" nell'ordine dato."""
     dest = np.full((bands, height, width), np.nan, dtype="float32")
-    for src_path in sorted(sources):
+    for src_path in sources:
         with rasterio.open(src_path) as src:
             tmp = np.full((bands, height, width), np.nan, dtype="float32")
             for b in range(bands):
@@ -111,6 +114,7 @@ def build_cube(tile_id: str, aoi: AOI, raw_lidar: dict[str, list[Path]], raw_ort
         "halo_m": HALO_M,
         "valid_fraction": {},
         "sources": {},
+        "restored": {},
     }
 
     transform, width, height = tile_grid(tile_id, aoi.work_crs, 1.0)
@@ -121,19 +125,23 @@ def build_cube(tile_id: str, aoi: AOI, raw_lidar: dict[str, list[Path]], raw_ort
         if not sources:
             path.unlink(missing_ok=True)
             continue
-        arr = _mosaic(sources, transform, width, height, aoi.work_crs, 1, Resampling.bilinear)[0]
+        sources = sorted(sources)
+        # PST: torna alla griglia UTM originale invece di ricampionare il nearest-neighbour (vedi restore.py)
+        usable = [restored_source(p, aoi.work_crs) for p in sources]
+        arr = _mosaic(usable, transform, width, height, aoi.work_crs, 1, Resampling.bilinear)[0]
         with rasterio.open(
             path, "w", width=width, height=height, crs=aoi.work_crs, transform=transform, **_FLOAT_PROFILE
         ) as ds:
             ds.write(arr, 1)
         meta["valid_fraction"][layer] = float(np.mean(~np.isnan(arr[rows, cols])))
-        meta["sources"][layer] = [str(p) for p in sorted(sources)]
+        meta["sources"][layer] = [str(p) for p in sources]
+        meta["restored"][layer] = [u != p for u, p in zip(usable, sources, strict=True)]
 
     has_ortho = False
     ortho_path = out / "ortho.tif"
     if raw_ortho:
         o_transform, o_width, o_height = tile_grid(tile_id, aoi.work_crs, 0.5)
-        rgb = _mosaic(raw_ortho, o_transform, o_width, o_height, aoi.work_crs, 3, Resampling.cubic)
+        rgb = _mosaic(sorted(raw_ortho), o_transform, o_width, o_height, aoi.work_crs, 3, Resampling.cubic)
         valid = ~np.isnan(rgb).any(axis=0)
         data = np.where(np.isnan(rgb), 0, np.clip(rgb, 0, 255)).astype("uint8")
         with rasterio.open(

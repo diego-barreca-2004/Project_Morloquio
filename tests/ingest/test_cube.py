@@ -145,6 +145,31 @@ def test_meta_contents(tmp_path):
         assert ds.profile.get("compress", "").lower() == "deflate"
 
 
+def test_cube_undoes_nearest_neighbour_resampling(data_dir):
+    from tests.ingest.test_restore import nn_source, terrain
+
+    src = nn_source(data_dir / "raw" / "pst_lidar" / "dtm_1x1" / "D38071567_0101_c140.tif")
+    out = build_cube(TILE, AOI_, {"dtm_1x1": [src]}, [])
+    with rasterio.open(out / "dtm.tif") as ds:
+        dtm = ds.read(1)
+        t = ds.transform
+    rows, cols = np.mgrid[0 : dtm.shape[0], 0 : dtm.shape[1]] + 0.5
+    truth = terrain(t.c + cols * t.a, t.f + rows * t.e)
+    valid = ~np.isnan(dtm)
+    err = dtm[valid] - truth[valid]
+    # riproiettare il nearest-neighbour lascia errori fino a pendenza × 0,5 m a righe regolari
+    assert np.sqrt(np.mean(err**2)) < 0.03
+    meta = json.loads((out / "meta.json").read_text())
+    assert meta["restored"]["dtm"] == [True]
+
+
+def test_zero_byte_sources_are_ignored(data_dir):
+    root = data_dir / "raw" / "pst_lidar" / "dtm_1x1"
+    root.mkdir(parents=True)
+    (root / "D38071567_0101_c .tif").write_bytes(b"")
+    assert pst_sources_for(TILE)["dtm_1x1"] == []
+
+
 def test_pst_sources_for_picks_tile_and_neighbors(data_dir):
     root = data_dir / "raw" / "pst_lidar" / "dtm_1x1"
     root.mkdir(parents=True)

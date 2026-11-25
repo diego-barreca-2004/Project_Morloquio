@@ -87,6 +87,10 @@ def list_tiles(client: PoliteClient, bbox, grid_url: str) -> list[PstTile]:
                 date=str(a.get("data") or ""),
                 tile_id=tile_id_from_tavola(a["tavola"]),
             )
+            if not tile.contratto.strip():
+                # cella segnaposto della griglia (contratto e data vuoti): lo zip contiene un TIFF da 0 byte
+                log.info("tavola PST senza rilievo, saltata", extra={"tavola": tile.tavola, "fid": tile.fid})
+                continue
             if tile.tile_id in wanted:
                 tiles.setdefault((tile.tavola, tile.contratto), tile)
         if not data.get("exceededTransferLimit"):
@@ -180,6 +184,9 @@ def _extract_tifs(
             if member.is_dir() or not name.lower().endswith((".tif", ".tiff")):
                 continue
             tile = _match_member(name, wanted)
+            if member.file_size == 0:
+                log.warning("membro zip vuoto ignorato", extra={"member": member.filename, "zip": zip_url})
+                continue
             if tile is None or ".." in PurePosixPath(member.filename).parts:
                 log.warning("membro zip ignorato", extra={"member": member.filename, "zip": zip_url})
                 continue
