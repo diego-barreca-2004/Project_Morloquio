@@ -1,0 +1,19 @@
+# Dati e output: mai in git (vedi data/README.md)
+data/*
+!data/README.md
+runs/
+
+# Ambiente e cache Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Download incompleti e segreti locali
+*.part
+.env
+
+# Strumenti locali
+.claude/
+.superpowers/
