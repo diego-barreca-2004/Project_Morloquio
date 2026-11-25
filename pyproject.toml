@@ -5,7 +5,9 @@ description = "Mappa aperta e automatica di tutte le strade e i sentieri del mon
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "pyyaml>=6.0.4",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -21,6 +23,9 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["morloquio"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
