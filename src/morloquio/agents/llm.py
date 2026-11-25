@@ -53,3 +53,16 @@ def chat(
         resp = client.post(f"{cfg.base_url.rstrip('/')}/chat/completions", json=body)
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]
+
+
+def unload(config: LLMConfig | None = None, transport=None) -> bool:
+    """Scarica il modello dalla VRAM (API nativa di Ollama, ``keep_alive: 0``). False se il server non risponde."""
+    cfg = config or load_llm_config()
+    root = cfg.base_url.rstrip("/").removesuffix("/v1")
+    try:
+        with httpx.Client(timeout=30.0, transport=transport) as client:
+            resp = client.post(f"{root}/api/generate", json={"model": cfg.model, "keep_alive": 0})
+            resp.raise_for_status()
+        return True
+    except httpx.HTTPError:
+        return False

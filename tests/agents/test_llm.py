@@ -4,7 +4,7 @@ import json
 import httpx
 import pytest
 
-from morloquio.agents.llm import LLMConfig, chat, load_llm_config
+from morloquio.agents.llm import LLMConfig, chat, load_llm_config, unload
 
 CFG = LLMConfig(base_url="http://127.0.0.1:11434/v1", model="inkling-2-mini:26b-a5b", timeout_s=5)
 
@@ -16,6 +16,26 @@ def _transport(seen):
         return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": "un sentiero"}}]})
 
     return httpx.MockTransport(handler)
+
+
+def test_unload_frees_vram_via_native_api():
+    seen = {}
+
+    def handler(request):
+        seen["url"] = str(request.url)
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"done": True, "done_reason": "unload"})
+
+    assert unload(CFG, transport=httpx.MockTransport(handler)) is True
+    assert seen["url"] == "http://127.0.0.1:11434/api/generate"
+    assert seen["body"] == {"model": "inkling-2-mini:26b-a5b", "keep_alive": 0}
+
+
+def test_unload_without_server_is_not_an_error():
+    def handler(request):
+        raise httpx.ConnectError("connection refused")
+
+    assert unload(CFG, transport=httpx.MockTransport(handler)) is False
 
 
 def test_load_llm_config():
