@@ -1,0 +1,9 @@
+# Stadio A: pesi della fusione dei segnali di linearità (Task 13) e soglie della vettorizzazione (Task 14)
+weights:
+  bench: 1.0
+  lrm_lin: 1.0
+  chm_gap: 0.7
+  ortho_lin: 0.7
+  gps: 0.5
+threshold: 0.35
+min_length_m: 10.0
