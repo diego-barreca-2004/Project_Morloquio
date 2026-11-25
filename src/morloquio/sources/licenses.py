@@ -182,7 +182,8 @@ def check_code_license(raw: str) -> str:
     """Ritorna la licenza se ammessa per il codice, altrimenti solleva :class:`LicenseRejected`."""
     text = (raw or "").strip()
     tokens = _EXPR_TOKEN.findall(text)
-    is_expression = any(t.upper() in {"AND", "OR", "WITH"} or t in "()" for t in tokens)
+    # Le parentesi da sole non bastano: "Mozilla Public License 2.0 (MPL 2.0)" è una frase, non un'espressione
+    is_expression = any(t.upper() in {"AND", "OR", "WITH"} for t in tokens)
     if is_expression:
         if _eval_expression(tokens):
             return text
