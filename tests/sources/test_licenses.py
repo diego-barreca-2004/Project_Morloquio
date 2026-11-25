@@ -12,7 +12,9 @@ from morloquio.sources.licenses import (
 )
 
 
-@pytest.mark.parametrize("ok", ["CC-BY-4.0", "ODbL-1.0", "CC0-1.0", "IODL-2.0", "etalab-2.0", "CC-BY-SA-4.0"])
+@pytest.mark.parametrize(
+    "ok", ["CC-BY-4.0", "ODbL-1.0", "CC0-1.0", "IODL-2.0", "etalab-2.0", "CC-BY-SA-4.0", "Copernicus-open"]
+)
 def test_data_allowed(ok):
     check_data_license(ok)
 

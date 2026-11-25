@@ -29,6 +29,9 @@ DATA_ALLOWED = {
     "etalab-2.0",
     "OGL-UK-3.0",
     "public-domain",
+    # Licenze Copernicus (Sentinel, Copernicus DEM): uso libero, riproduzione, modifica e ridistribuzione con
+    # attribuzione. Verifica e citazioni in docs/decisions/0003-licenze-copernicus.md
+    "Copernicus-open",
 }
 
 CODE_ALLOWED = {

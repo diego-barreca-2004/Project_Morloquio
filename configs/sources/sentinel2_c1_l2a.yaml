@@ -1,0 +1,18 @@
+id: sentinel2_c1_l2a
+name: Sentinel-2 L2A Collection 1 (COG su AWS, catalogo Earth Search)
+provider: Commissione europea / ESA, programma Copernicus
+license: Copernicus-open
+license_url: https://sentinels.copernicus.eu/documents/247904/690755/Sentinel_Data_Legal_Notice
+attribution: "Contains modified Copernicus Sentinel data [anno]"
+resolution_m: 10.0
+protocol: stac
+adapter: stac
+verified: "2026-11-25"
+note: Accesso "free, full and open"; uso, riproduzione, modifica e ridistribuzione con attribuzione (ADR 0003).
+params:
+  stac_url: https://earth-search.aws.element84.com/v1
+  collection: sentinel-2-c1-l2a
+  datetime: 2024-01-01/2025-12-31
+  max_cloud: 10
+  max_items: 40
+  assets: [red, green, blue, nir, swir16, swir22, scl]

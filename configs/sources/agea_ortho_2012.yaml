@@ -1,0 +1,18 @@
+id: agea_ortho_2012
+name: Ortofoto a colori AGEA 2012 (50 cm), servizio WMS nazionale
+provider: AGEA / Geoportale Nazionale MASE
+# Il servizio dichiara "AccessConstraints: Nessuno" ma non una licenza d'uso esplicita: rifiutata finché non è
+# verificata (vedi docs/decisions/0002-licenza-ortofoto-agea-2012.md)
+license: unverified
+license_url: http://wms.pcn.minambiente.it/ogc?map=/ms_ogc/WMS_v1.3/raster/ortofoto_colore_12.map&service=WMS&request=GetCapabilities
+attribution: "AGEA – Geoportale Nazionale MASE"
+resolution_m: 0.5
+protocol: wms
+adapter: agea_wms
+verified: "2026-11-25"
+params:
+  wms_url: http://wms.pcn.minambiente.it/ogc?map=/ms_ogc/WMS_v1.3/raster/ortofoto_colore_12.map
+  layer: OI.ORTOIMMAGINI.2012.33
+  crs: EPSG:32633
+  format: image/jpeg
+  block_px: 1024

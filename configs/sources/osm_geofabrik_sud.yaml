@@ -1,0 +1,13 @@
+id: osm_geofabrik_sud
+name: OpenStreetMap, estratto Italia Sud (Geofabrik)
+provider: OpenStreetMap contributors / Geofabrik GmbH
+license: ODbL-1.0
+license_url: https://www.openstreetmap.org/copyright
+attribution: "© OpenStreetMap contributors"
+resolution_m: null
+protocol: http
+adapter: osm_extract
+verified: "2026-11-25"
+params:
+  pbf_url: https://download.geofabrik.de/europe/italy/sud-latest.osm.pbf
+  md5_url: https://download.geofabrik.de/europe/italy/sud-latest.osm.pbf.md5

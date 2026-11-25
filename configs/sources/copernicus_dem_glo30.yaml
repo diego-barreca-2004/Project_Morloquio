@@ -1,0 +1,15 @@
+id: copernicus_dem_glo30
+name: Copernicus DEM GLO-30 (COG su AWS, catalogo Earth Search)
+provider: Commissione europea / ESA, programma Copernicus (DLR e.V., Airbus Defence and Space GmbH)
+license: Copernicus-open
+license_url: https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Data/DEM/resources/license/License-COPDEM-30.pdf
+attribution: "produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved"
+resolution_m: 30.0
+protocol: stac
+adapter: stac
+verified: "2026-11-25"
+note: Licenza gratuita, attribuzione obbligatoria, dati modificati con dicitura dedicata (ADR 0003).
+params:
+  stac_url: https://earth-search.aws.element84.com/v1
+  collection: cop-dem-glo-30
+  assets: [data]
