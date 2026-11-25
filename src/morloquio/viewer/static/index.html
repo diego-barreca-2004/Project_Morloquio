@@ -94,7 +94,9 @@ function renderEval(ev, runId, aoi) {
     return;
   }
   const table = el("table");
+  const stageName = { stage_a: "A (geometrico)", stage_b: "B (rete neurale, fuori fold)" };
   const rows = [
+    ["Stadio valutato", stageName[ev.stage] || "A (geometrico)", ""],
     ["Completezza (recall)", pct(ev.completeness), ev.passed === true ? "ok" : ev.passed === false ? "bad" : ""],
     ["Correttezza (stima per difetto)", pct(ev.correctness), ""],
     ["Riferimento OSM nell'area LiDAR", km(ev.ref_km), ""],

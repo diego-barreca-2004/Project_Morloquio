@@ -39,6 +39,7 @@ def _raster_specs(run_id: str) -> list[tuple[str, str, str, range, callable]]:
         ("hillshade", "Ombreggiatura LiDAR", "gray", RASTER_ZOOMS, lambda t: terrain / t / "hillshade.tif"),
         ("lrm", "Rilievo locale (LRM)", "gray", RASTER_ZOOMS, lambda t: terrain / t / "lrm.tif"),
         ("score", "Punteggio Stadio A", "heat", RASTER_ZOOMS, lambda t: run / "stage_a" / t / "score.tif"),
+        ("score_b", "Probabilità Stadio B (rete)", "heat", RASTER_ZOOMS, lambda t: run / "stage_b" / t / "score.tif"),
     ]
 
 
@@ -81,16 +82,18 @@ def build_viewer(run_id: str, aoi: AOI) -> Path:
                     "count": count,
                 }
             )
-    order = ["hillshade", "lrm", "score", "ortho"]  # ordine nel pannello: prima il terreno
+    order = ["hillshade", "lrm", "score", "score_b", "ortho"]  # ordine nel pannello: prima il terreno
     raster.sort(key=lambda r: order.index(r["id"]))
 
     vector = []
-    cand = run / "stage_a" / "candidates_merged.gpkg"
-    if cand.exists():
-        n = _write_geojson(gpd.read_file(cand), out / "vector" / "candidates.geojson")
-        vector.append(
-            {"id": "candidates", "name": "Candidati Stadio A", "url": "vector/candidates.geojson", "count": n}
-        )
+    for layer_id, stage, name in (
+        ("candidates", "stage_a", "Candidati Stadio A"),
+        ("candidates_b", "stage_b", "Vie Stadio B (rete)"),
+    ):
+        cand = run / stage / "candidates_merged.gpkg"
+        if cand.exists():
+            n = _write_geojson(gpd.read_file(cand), out / "vector" / f"{layer_id}.geojson")
+            vector.append({"id": layer_id, "name": name, "url": f"vector/{layer_id}.geojson", "count": n})
     osm = interim_dir("osm") / f"{aoi.name}.gpkg"
     if osm.exists():
         hw = gpd.read_file(osm, layer="highways")
@@ -100,7 +103,11 @@ def build_viewer(run_id: str, aoi: AOI) -> Path:
             {"id": "osm_highways", "name": "OSM attuale (vie)", "url": "vector/osm_highways.geojson", "count": n}
         )
 
-    ev = run / "eval" / "stage_a.json"
+    evals = {
+        stage: json.loads((run / "eval" / f"{stage}.json").read_text())
+        for stage in ("stage_a", "stage_b")
+        if (run / "eval" / f"{stage}.json").exists()
+    }
     w, s, e, n_ = aoi.core_bbox
     layers = {
         "run_id": run_id,
@@ -109,7 +116,8 @@ def build_viewer(run_id: str, aoi: AOI) -> Path:
         "zoom": 15,
         "raster": raster,
         "vector": vector,
-        "eval": json.loads(ev.read_text()) if ev.exists() else None,
+        "eval": evals.get("stage_b") or evals.get("stage_a"),  # il pannello mostra lo stadio più avanzato
+        "evals": evals,
         "attribution": _attributions(),
     }
     (out / "layers.json").write_text(json.dumps(layers, indent=2, ensure_ascii=False), encoding="utf-8")

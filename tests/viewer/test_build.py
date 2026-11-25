@@ -79,3 +79,26 @@ def test_build_viewer_without_eval_or_vectors(monkeypatch, tmp_path):
     out = build_viewer("r2", aoi)
     layers = json.loads((out / "layers.json").read_text())
     assert layers["raster"] == [] and layers["vector"] == [] and layers["eval"] is None
+
+
+def test_build_viewer_shows_stage_b(monkeypatch, tmp_path):
+    monkeypatch.setenv("MORLOQUIO_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("MORLOQUIO_RUNS_DIR", str(tmp_path / "runs"))
+    aoi = AOI("t", (15.67, 38.07, 15.68, 38.08), (15.67, 38.07, 15.68, 38.08), CRS)
+    run = tmp_path / "runs" / "r3"
+    _tif(run / "stage_a" / TILE / "score.tif", np.full((200, 200), 0.7, dtype="float32"), float("nan"))
+    _tif(run / "stage_b" / TILE / "score.tif", np.full((200, 200), 0.9, dtype="float32"), float("nan"))
+    line = LineString([(X0 + 10, Y0 - 10), (X0 + 190, Y0 - 190)])
+    gpd.GeoDataFrame(
+        {"length_m": [line.length], "mean_score": [0.9], "max_score": [0.95]}, geometry=[line], crs=CRS
+    ).to_file(run / "stage_b" / "candidates_merged.gpkg", layer="candidates", engine="pyogrio")
+    (run / "eval").mkdir()
+    (run / "eval" / "stage_a.json").write_text(json.dumps({"stage": "stage_a", "completeness": 0.2}))
+    (run / "eval" / "stage_b.json").write_text(json.dumps({"stage": "stage_b", "completeness": 0.8}))
+
+    layers = json.loads((build_viewer("r3", aoi) / "layers.json").read_text())
+
+    assert [r["id"] for r in layers["raster"]] == ["score", "score_b"]
+    assert [v["id"] for v in layers["vector"]] == ["candidates_b"]
+    assert layers["eval"]["stage"] == "stage_b"  # il pannello mostra lo stadio più avanzato
+    assert set(layers["evals"]) == {"stage_a", "stage_b"}

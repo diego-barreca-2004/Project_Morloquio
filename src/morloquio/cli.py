@@ -151,7 +151,9 @@ def _viewer_run(ctx, _):
 
 
 def _viewer_done(ctx, _):
-    inputs = [ctx.run_dir / "stage_a" / "candidates_merged.gpkg", ctx.run_dir / "eval" / "stage_a.json"]
+    inputs = [ctx.run_dir / stage / "candidates_merged.gpkg" for stage in ("stage_a", "stage_b")] + [
+        ctx.run_dir / "eval" / f"{stage}.json" for stage in ("stage_a", "stage_b")
+    ]
     return _fresh(ctx.run_dir / "viewer" / "layers.json", inputs)
 
 

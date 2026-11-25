@@ -44,11 +44,12 @@ train:
   patch: 256
   batch: 16
   positive_fraction: 0.6 # quota di patch centrate su un pixel OSM
-  patches_per_epoch: 1600
-  epochs: 40
+  patches_per_epoch: 2000 # ~20 s per epoca sulla RTX 5070 Ti (106 patch/s)
+  epochs: 15
   lr: 0.001
   weight_decay: 0.0001
-  patience: 8
+  patience: 5
+  val_patches: 256
   channel_dropout: 0.2
   seed: 0
 
