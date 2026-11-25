@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="morloquio-test">
+  <!-- nodi dentro il bbox di test [15.66, 38.06, 15.69, 38.09] -->
+  <node id="1" lat="38.070" lon="15.670" version="1"/>
+  <node id="2" lat="38.071" lon="15.671" version="1"/>
+  <node id="3" lat="38.072" lon="15.672" version="1"/>
+  <node id="4" lat="38.073" lon="15.673" version="1"/>
+  <node id="5" lat="38.074" lon="15.674" version="1"/>
+  <node id="6" lat="38.075" lon="15.675" version="1"/>
+  <node id="7" lat="38.076" lon="15.676" version="1"/>
+  <node id="8" lat="38.077" lon="15.677" version="1"/>
+  <node id="9" lat="38.0771" lon="15.677" version="1"/>
+  <node id="10" lat="38.0771" lon="15.6771" version="1"/>
+  <node id="11" lat="38.077" lon="15.6771" version="1"/>
+  <node id="12" lat="38.078" lon="15.678" version="1"/>
+  <node id="13" lat="38.079" lon="15.679" version="1"/>
+  <node id="30" lat="38.080" lon="15.685" version="1"/>
+  <node id="31" lat="38.081" lon="15.695" version="1"/>
+  <node id="32" lat="38.082" lon="15.685" version="1"/>
+  <!-- nodi fuori bbox -->
+  <node id="20" lat="38.200" lon="15.800" version="1"/>
+  <node id="21" lat="38.201" lon="15.801" version="1"/>
+  <way id="100" version="1">
+    <nd ref="1"/><nd ref="2"/>
+    <tag k="highway" v="path"/>
+  </way>
+  <way id="101" version="1">
+    <nd ref="2"/><nd ref="3"/>
+    <tag k="highway" v="track"/>
+    <tag k="bridge" v="yes"/>
+    <tag k="tracktype" v="grade3"/>
+  </way>
+  <way id="102" version="1">
+    <nd ref="4"/><nd ref="5"/>
+    <tag k="waterway" v="stream"/>
+  </way>
+  <way id="103" version="1">
+    <nd ref="6"/><nd ref="7"/>
+    <tag k="barrier" v="retaining_wall"/>
+  </way>
+  <way id="104" version="1">
+    <nd ref="8"/><nd ref="9"/><nd ref="10"/><nd ref="11"/><nd ref="8"/>
+    <tag k="building" v="yes"/>
+  </way>
+  <way id="105" version="1">
+    <nd ref="20"/><nd ref="21"/>
+    <tag k="highway" v="residential"/>
+  </way>
+  <way id="106" version="1">
+    <nd ref="12"/><nd ref="13"/>
+    <tag k="barrier" v="hedge"/>
+  </way>
+  <way id="107" version="1">
+    <nd ref="30"/><nd ref="31"/><nd ref="32"/>
+    <tag k="highway" v="path"/>
+  </way>
+</osm>
