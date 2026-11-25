@@ -1,0 +1,8 @@
+# Eccezioni al license gate. Ogni voce di `packages` è una verifica fatta a mano: licenza SPDX, URL del testo
+# della licenza e nota. Non aggiungere voci senza aver letto la licenza.
+
+# Strato di sistema (driver NVIDIA, CUDA): ammesso per scelta esplicita dello spec (§3.6), non è codice del progetto.
+system_layer_prefixes:
+  - "nvidia-"
+
+packages: {}
