@@ -27,7 +27,7 @@ labels:
 
 folds:
   k: 5
-  block_tiles: 3         # blocchi 3 × 3 tile (~2,6 × 3,3 km) sempre nello stesso fold
+  block_tiles: 2         # blocchi 2 × 2 tile (~1,8 × 2,2 km): autocorrelazione forte sotto i 20 m (Kattenborn 2022)
 
 model:
   base: 32
