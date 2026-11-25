@@ -137,6 +137,26 @@ def test_vectorize_and_merge_run(monkeypatch, tmp_path):
     assert len(gdf) == 1 and gdf.crs.to_epsg() == 32633
 
 
+def test_vectorize_tile_reconnects_only_when_asked(monkeypatch, tmp_path):
+    from morloquio.candidates import vectorize
+
+    monkeypatch.setenv("MORLOQUIO_RUNS_DIR", str(tmp_path / "runs"))
+    tile = "N3807E01567"
+    score, transform = _line_score(tile, _seam_line())
+    d = tmp_path / "runs" / "r1" / "stage_b" / tile
+    d.mkdir(parents=True)
+    profile = dict(driver="GTiff", width=score.shape[1], height=score.shape[0], count=1, dtype="float32")
+    with rasterio.open(d / "score.tif", "w", crs=CRS, transform=transform, **profile) as ds:
+        ds.write(score, 1)
+    calls = []
+    monkeypatch.setattr(vectorize, "reconnect", lambda gdf, s, t, p: calls.append(p) or gdf)
+    base = {"threshold": 0.35, "min_length_m": 10.0}
+    vectorize.vectorize_tile(tile, base, "r1", stage="stage_b")
+    assert calls == []
+    vectorize.vectorize_tile(tile, base | {"reconnect": {"search_m": 50.0}}, "r1", stage="stage_b")
+    assert calls == [{"search_m": 50.0}]
+
+
 def test_merge_without_snap_keeps_seam_gap():
     parts = []
     for tile in ("N3807E01567", "N3807E01568"):

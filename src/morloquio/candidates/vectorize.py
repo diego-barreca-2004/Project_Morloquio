@@ -24,6 +24,7 @@ from shapely.ops import linemerge
 from skan import Skeleton, summarize
 from skimage.morphology import skeletonize
 
+from morloquio.candidates.reconnect import reconnect
 from morloquio.common.grid import tile_bounds
 from morloquio.common.paths import runs_dir
 from morloquio.common.runlog import get_logger
@@ -204,6 +205,8 @@ def vectorize_tile(tile_id: str, params: dict, run_id: str, stage: str = "stage_
         transform = ds.transform
         crs = ds.crs.to_string()
     gdf = extract_candidates(score, transform, crs, float(params["threshold"]), float(params["min_length_m"]))
+    if params.get("reconnect"):  # ricucitura dei buchi dalle foglie (solo se configurata)
+        gdf = reconnect(gdf, score, transform, params["reconnect"])
     gdf = crop_to_core(gdf, tile_id, crs)
     log.info(
         "candidati estratti", extra={"tile_id": tile_id, "count": len(gdf), "km": float(gdf.length_m.sum()) / 1000}
