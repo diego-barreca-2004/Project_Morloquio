@@ -59,11 +59,13 @@ def tier_for(has_lidar: bool, has_ortho: bool) -> str:
 
 def pst_sources_for(tile_id: str) -> dict[str, list[Path]]:
     """Tavole PST già scaricate per la tile e le 8 vicine, per prodotto."""
-    names = {f"{pst_tavola_for(t)}.tif" for t in [tile_id, *neighbors(tile_id)]}
+    tavole = {pst_tavola_for(t) for t in [tile_id, *neighbors(tile_id)]}
     out = {}
     for product in LIDAR_LAYERS:
         root = raw_dir("pst_lidar") / product
-        out[product] = sorted(p for p in root.glob("*.tif") if p.name in names) if root.exists() else []
+        files = root.glob("*.tif") if root.exists() else []
+        # nome file: <tavola>_c<contratto>.tif (vedi PstTile.filename)
+        out[product] = sorted(p for p in files if p.stem.rsplit("_c", 1)[0] in tavole)
     return out
 
 

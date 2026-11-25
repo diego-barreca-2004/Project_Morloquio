@@ -29,7 +29,7 @@ from morloquio.sources.catalog import SourceSpec
 
 SOURCE_ID = "pst_lidar"
 OK_REASONS = {"OK", "METADATA_WARNING"}
-_TAVOLA_IN_NAME = re.compile(r"(D\d{8}_0101)")
+_TAVOLA_IN_NAME = re.compile(r"(?:_(\d+)_)?(D\d{8}_0101)")
 _PAGE = 2000
 
 log = get_logger("sources.pst_lidar")
@@ -47,6 +47,11 @@ class PstTile:
     contratto: str
     date: str
     tile_id: str
+
+    @property
+    def filename(self) -> str:
+        """Una tavola può essere coperta da più contratti (rilievi diversi): un file per contratto."""
+        return f"{self.tavola}_c{self.contratto}.tif"
 
 
 def list_tiles(client: PoliteClient, bbox, grid_url: str) -> list[PstTile]:
@@ -154,8 +159,20 @@ def wait_ready(
         sleep(poll_s)
 
 
+def _match_member(name: str, wanted: dict[tuple[str, str], PstTile]) -> PstTile | None:
+    """Tile del batch a cui appartiene il membro dello zip (es. ``calabria_140_D38071567_0101_DTM.tiff``)."""
+    m = _TAVOLA_IN_NAME.search(name)
+    if not m:
+        return None
+    contratto, tavola = m.group(1), m.group(2)
+    if contratto and (tavola, contratto) in wanted:
+        return wanted[(tavola, contratto)]
+    same = [t for (tav, _), t in wanted.items() if tav == tavola]
+    return same[0] if len(same) == 1 else None
+
+
 def _extract_tifs(
-    zip_path: Path, zip_url: str, root: Path, wanted: dict[str, PstTile], license: str
+    zip_path: Path, zip_url: str, root: Path, wanted: dict[tuple[str, str], PstTile], license: str
 ) -> list[str]:
     written = []
     with zipfile.ZipFile(zip_path) as zf:
@@ -163,12 +180,11 @@ def _extract_tifs(
             name = PurePosixPath(member.filename).name
             if member.is_dir() or not name.lower().endswith((".tif", ".tiff")):
                 continue
-            m = _TAVOLA_IN_NAME.search(name)
-            if not m or m.group(1) not in wanted or ".." in PurePosixPath(member.filename).parts:
+            tile = _match_member(name, wanted)
+            if tile is None or ".." in PurePosixPath(member.filename).parts:
                 log.warning("membro zip ignorato", extra={"member": member.filename, "zip": zip_url})
                 continue
-            tile = wanted[m.group(1)]
-            rel = f"{tile.tavola}.tif"
+            rel = tile.filename
             part = root / (rel + ".part")
             digest = hashlib.sha256()
             size = 0
@@ -199,6 +215,19 @@ def _extract_tifs(
     return written
 
 
+def _batches(tiles: Sequence[PstTile], batch_max: int) -> list[list[PstTile]]:
+    """Batch di al massimo ``batch_max`` tavole, mai due volte la stessa tavola nello stesso batch."""
+    batches: list[list[PstTile]] = []
+    for tile in tiles:
+        for batch in batches:
+            if len(batch) < batch_max and all(t.tavola != tile.tavola for t in batch):
+                batch.append(tile)
+                break
+        else:
+            batches.append([tile])
+    return batches
+
+
 def fetch_product(
     client: PoliteClient,
     spec: SourceSpec,
@@ -214,11 +243,9 @@ def fetch_product(
     root = raw_dir(SOURCE_ID) / product
     root.mkdir(parents=True, exist_ok=True)
     zips = root / ".zips"
-    todo = [t for t in tiles if not is_complete(root, f"{t.tavola}.tif")]
-    batch_max = int(p["batch_max"])
-    for start in range(0, len(todo), batch_max):
-        batch = todo[start : start + batch_max]
-        wanted = {t.tavola: t for t in batch}
+    todo = [t for t in tiles if not is_complete(root, t.filename)]
+    for batch in _batches(todo, int(p["batch_max"])):
+        wanted = {(t.tavola, t.contratto): t for t in batch}
         try:
             session_id = request_session(
                 client, p["api_url"], product, batch, canale=p["canale"], prodotto=p["prodotto"]
@@ -251,4 +278,4 @@ def fetch_product(
             client.request("POST", f"{p['api_url']}/{session_id}/ack")
         except Exception as exc:  # l'ack è di cortesia: non blocca il download
             log.warning("ack PST fallito", extra={"session": session_id, "error": str(exc)})
-    return [root / f"{t.tavola}.tif" for t in tiles if is_complete(root, f"{t.tavola}.tif")]
+    return [root / t.filename for t in tiles if is_complete(root, t.filename)]

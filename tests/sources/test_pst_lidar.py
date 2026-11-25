@@ -39,11 +39,11 @@ def _tile(i):
     )
 
 
-def _zip_for(tavolas, extra_members=()):
+def _zip_for(tiles, extra_members=()):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        for tav in tavolas:
-            zf.writestr(f"calabria_140_{tav}_DTM.tiff", f"TIFF-{tav}".encode())
+        for tav, contratto in tiles:
+            zf.writestr(f"calabria_{contratto}_{tav}_DTM.tiff", f"TIFF-{tav}".encode())
         zf.writestr("area_selezionata/tile_selezionate.csv", "x")
         for name, data in extra_members:
             zf.writestr(name, data)
@@ -70,7 +70,7 @@ class FakePst:
             if n in self.bad_batches:
                 return httpx.Response(202, json={"idSessione": None, "reason": "KO"})
             sid = f"s{n}"
-            self.sessions[sid] = [t["tavola"] for t in body["tileList"]]
+            self.sessions[sid] = [(t["tavola"], t["contratto"]) for t in body["tileList"]]
             return httpx.Response(202, json={"idSessione": sid, "reason": "OK", "numberOfUrl": 1})
         if request.method == "POST" and url.endswith("/ack"):
             self.acks.append(url.split("/")[-2])
@@ -142,8 +142,8 @@ def test_batches_of_20(spec, data_dir):
     assert fake.posts[0]["canale"] == "PST2" and fake.posts[0]["tileList"][0]["fid"] == "1000"
     assert len(paths) == 45
     root = data_dir / "raw" / "pst_lidar" / "dtm_1x1"
-    assert (root / f"{tiles[0].tavola}.tif").read_bytes() == f"TIFF-{tiles[0].tavola}".encode()
-    assert is_complete(root, f"{tiles[44].tavola}.tif")
+    assert (root / f"{tiles[0].tavola}_c140.tif").read_bytes() == f"TIFF-{tiles[0].tavola}".encode()
+    assert is_complete(root, f"{tiles[44].tavola}_c140.tif")
 
 
 def test_metadata_warning_is_success(spec):
@@ -172,7 +172,7 @@ def test_zip_member_mapped_by_tavola(spec, data_dir):
     fetch_product(_client(fake.handler), spec, "dtm_1x1", [_tile(0)])
     root = data_dir / "raw" / "pst_lidar" / "dtm_1x1"
     tifs = sorted(p.name for p in root.glob("*.tif"))
-    assert tifs == [f"{_tile(0).tavola}.tif"]
+    assert tifs == [f"{_tile(0).tavola}_c140.tif"]
     assert not list(data_dir.rglob("evil*"))
     assert not list(root.parent.glob("*.tif"))
 
@@ -221,3 +221,12 @@ def test_download_error_skips_only_that_batch(spec):
     paths = fetch_product(_client(handler), spec, "dtm_1x1", tiles)
     assert len(paths) == 25
     assert len(fake.posts) == 3
+
+
+def test_same_tavola_two_contracts_kept_apart(spec, data_dir):
+    fake = FakePst()
+    a = PstTile(1, "D38071567_0101", "Calabria", "140", "090313", "N3807E01567")
+    b = PstTile(2, "D38071567_0101", "Calabria", "77", "120601", "N3807E01567")
+    paths = fetch_product(_client(fake.handler), spec, "dtm_1x1", [a, b])
+    assert sorted(p.name for p in paths) == ["D38071567_0101_c140.tif", "D38071567_0101_c77.tif"]
+    assert [len(p["tileList"]) for p in fake.posts] == [1, 1]  # contratti diversi in sessioni diverse

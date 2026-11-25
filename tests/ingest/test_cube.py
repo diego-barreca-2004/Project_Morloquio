@@ -148,10 +148,19 @@ def test_meta_contents(tmp_path):
 def test_pst_sources_for_picks_tile_and_neighbors(data_dir):
     root = data_dir / "raw" / "pst_lidar" / "dtm_1x1"
     root.mkdir(parents=True)
-    for tav in ("D38071567_0101", "D38081568_0101", "D38101570_0101"):
-        (root / f"{tav}.tif").write_bytes(b"x")
+    for name in (
+        "D38071567_0101_c140.tif",
+        "D38071567_0101_c77.tif",
+        "D38081568_0101_c140.tif",
+        "D38101570_0101_c140.tif",
+    ):
+        (root / name).write_bytes(b"x")
     found = pst_sources_for(TILE)
-    assert sorted(p.name for p in found["dtm_1x1"]) == ["D38071567_0101.tif", "D38081568_0101.tif"]
+    assert sorted(p.name for p in found["dtm_1x1"]) == [
+        "D38071567_0101_c140.tif",
+        "D38071567_0101_c77.tif",
+        "D38081568_0101_c140.tif",
+    ]
     assert found["dsm_first_1x1"] == []
 
 
