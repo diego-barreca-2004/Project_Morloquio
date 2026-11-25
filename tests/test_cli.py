@@ -77,6 +77,27 @@ def test_tile_without_cube_is_skipped_by_terrain(dirs):
     assert _runjson(dirs)["tiles"]["N3807E01567"]["terrain"] == "skipped: nessun cubo"
 
 
+def test_terrain_redone_when_cube_is_newer(dirs):
+    import os
+
+    from morloquio.common.cache import params_hash
+    from morloquio.terrain.derivatives import LAYERS
+
+    tile = "N3807E01567"
+    cube = dirs / "data" / "processed" / "cube" / tile
+    cube.mkdir(parents=True)
+    (cube / "dtm.tif").write_bytes(b"x")
+    ctx = cli.RunContext(aoi=cli.load_aoi("morloquio"), run_id="r1", params=cli.stage_params())
+    terrain = dirs / "data" / "processed" / "terrain" / params_hash(ctx.params["terrain"]) / tile
+    terrain.mkdir(parents=True)
+    for name in LAYERS:
+        (terrain / f"{name}.tif").write_bytes(b"x")
+        os.utime(terrain / f"{name}.tif", (1_000_000, 1_000_000))
+    assert cli.STAGES["terrain"].done(ctx, tile) is False  # cubo rifatto dopo i derivati
+    os.utime(cube / "dtm.tif", (500_000, 500_000))
+    assert cli.STAGES["terrain"].done(ctx, tile) is True
+
+
 def test_sources_command_lists_rejected(capsys):
     assert main(["sources"]) == 0
     out = capsys.readouterr().out

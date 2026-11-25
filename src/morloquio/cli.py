@@ -103,7 +103,8 @@ def _terrain_done(ctx, tile):
     from morloquio.terrain.derivatives import LAYERS
 
     d = processed_dir("terrain") / params_hash(ctx.params["terrain"]) / tile
-    return all((d / f"{name}.tif").exists() for name in LAYERS)
+    dtm = processed_dir("cube") / tile / "dtm.tif"
+    return all(_fresh(d / f"{name}.tif", [dtm]) for name in LAYERS)  # cubo rifatto = derivati da rifare
 
 
 def _stage_a_run(ctx, tile):
