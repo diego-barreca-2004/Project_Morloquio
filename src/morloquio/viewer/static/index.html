@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Morloquio · visualizzatore</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  /* Strumento di verifica a occhio: la mappa è il contenuto, il pannello resta neutro e compatto. */
+  :root {
+    --bg: #ffffff;
+    --text: #1d2125;
+    --muted: #5b636b;
+    --line: #d6dadf;
+    --ok: #1b7f3b;
+    --bad: #b3261e;
+    --focus: #0b57d0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1e2226; --text: #e8eaed; --muted: #a8b0b8; --line: #3a4046; --ok: #6fd08c; --bad: #f2b8b5; --focus: #8ab4f8; }
+  }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  #map { position: absolute; inset: 0; }
+  #panel { position: absolute; top: 12px; left: 12px; width: min(320px, calc(100vw - 24px));
+    max-height: calc(100vh - 24px); overflow: auto; box-sizing: border-box; padding: 12px 14px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px; z-index: 2; }
+  #panel[hidden] { display: none; }
+  #toggle { position: absolute; top: 12px; left: 12px; z-index: 1; padding: 6px 10px; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; cursor: pointer; }
+  h1 { font-size: 15px; margin: 0 0 2px; }
+  h2 { font-size: 13px; margin: 14px 0 6px; color: var(--muted); font-weight: 600; }
+  .sub { color: var(--muted); font-size: 12px; margin: 0; word-break: break-all; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+  .row label { flex: 1; cursor: pointer; }
+  .row input[type=range] { width: 90px; }
+  .count { color: var(--muted); font-size: 12px; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  td { padding: 2px 0; } td:last-child { text-align: right; font-weight: 600; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  .note { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+  .ramp { height: 8px; border-radius: 2px; background: linear-gradient(to right, #fdae61, #f46d43, #d7191c); }
+  .ramp-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  #hide { float: right; border: 0; background: none; color: var(--muted); font: inherit; cursor: pointer; padding: 0 2px; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  code { font-size: 12px; }
+  .popup td:first-child { color: #5b636b; padding-right: 10px; }
+</style>
+</head>
+<body>
+<div id="map" role="application" aria-label="Mappa del run"></div>
+<button id="toggle" type="button" aria-controls="panel" aria-expanded="false" hidden>Livelli e valutazione</button>
+<aside id="panel" aria-label="Livelli e valutazione">
+  <button id="hide" type="button" aria-controls="panel" aria-expanded="true" title="Nascondi pannello">Nascondi</button>
+  <h1>Morloquio</h1>
+  <p class="sub" id="runinfo">Caricamento di layers.json…</p>
+  <h2>Valutazione contro OSM</h2>
+  <div id="eval"></div>
+  <h2>Livelli</h2>
+  <div id="layers"></div>
+  <h2>Candidati: punteggio medio</h2>
+  <div class="ramp" aria-hidden="true"></div>
+  <div class="ramp-labels"><span>0,35</span><span>0,6</span><span>0,9+</span></div>
+  <p class="note">Clic su una linea per i dettagli. Le vie OSM aprono la scheda su openstreetmap.org.</p>
+</aside>
+<script>
+"use strict";
+
+const panel = document.getElementById("panel");
+const toggle = document.getElementById("toggle");
+document.getElementById("hide").addEventListener("click", () => {
+  panel.hidden = true; toggle.hidden = false; toggle.setAttribute("aria-expanded", "false"); toggle.focus();
+});
+toggle.addEventListener("click", () => {
+  panel.hidden = false; toggle.hidden = true; toggle.setAttribute("aria-expanded", "true");
+});
+
+function el(tag, attrs = {}, text) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+const pct = (v) => (v === null || v === undefined || Number.isNaN(v)) ? "n/d" : (100 * v).toFixed(1) + "%";
+const km = (v) => (v === null || v === undefined) ? "n/d" : v.toFixed(2) + " km";
+
+function renderEval(ev, runId, aoi) {
+  const box = document.getElementById("eval");
+  box.replaceChildren();
+  if (!ev) {
+    box.append(el("p", { class: "note" }, "Valutazione non ancora calcolata. Esegui:"),
+      el("code", {}, `morloquio run eval --aoi ${aoi} --run-id ${runId}`));
+    return;
+  }
+  const table = el("table");
+  const rows = [
+    ["Completezza (recall)", pct(ev.completeness), ev.passed === true ? "ok" : ev.passed === false ? "bad" : ""],
+    ["Correttezza (stima per difetto)", pct(ev.correctness), ""],
+    ["Riferimento OSM nell'area LiDAR", km(ev.ref_km), ""],
+    ["Candidati nell'area LiDAR", km(ev.cand_km), ""],
+    ["Soglia di uscita", ev.exit_threshold !== undefined ? pct(ev.exit_threshold) : "n/d", ""],
+  ];
+  for (const [label, value, cls] of rows) {
+    const tr = el("tr");
+    tr.append(el("td", {}, label), el("td", cls ? { class: cls } : {}, value));
+    table.append(tr);
+  }
+  box.append(table);
+  if (ev.buffer_m !== undefined) box.append(el("p", { class: "note" }, `Buffer di confronto: ${ev.buffer_m} m.`));
+}
+
+function addToggle(map, ids, name, count, visible, opacityProp) {
+  const row = el("div", { class: "row" });
+  const id = "t-" + ids[0];
+  const box = el("input", { type: "checkbox", id });
+  box.checked = visible;
+  box.addEventListener("change", () => {
+    for (const layer of ids) map.setLayoutProperty(layer, "visibility", box.checked ? "visible" : "none");
+  });
+  const label = el("label", { for: id }, name + " ");
+  if (count !== undefined) label.append(el("span", { class: "count" }, `(${count})`));
+  row.append(box, label);
+  if (opacityProp) {
+    const slider = el("input", { type: "range", min: "0", max: "1", step: "0.05", value: "1",
+      "aria-label": "Opacità " + name });
+    slider.addEventListener("input", () => map.setPaintProperty(ids[0], opacityProp, Number(slider.value)));
+    row.append(slider);
+  }
+  document.getElementById("layers").append(row);
+}
+
+function popupTable(pairs) {
+  const table = el("table", { class: "popup" });
+  for (const [k, v] of pairs) {
+    const tr = el("tr");
+    const td = el("td");
+    if (v instanceof Node) td.append(v); else td.textContent = v ?? "n/d";
+    tr.append(el("td", {}, k), td);
+    table.append(tr);
+  }
+  return table;
+}
+
+async function main() {
+  let cfg;
+  try {
+    const resp = await fetch("layers.json", { cache: "no-store" });
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    cfg = await resp.json();
+  } catch (err) {
+    document.getElementById("runinfo").textContent =
+      "Impossibile leggere layers.json (" + err.message + "). Apri la pagina con `morloquio view --run-id <id>`, non come file.";
+    return;
+  }
+  document.getElementById("runinfo").textContent = `Run ${cfg.run_id} · AOI ${cfg.aoi}`;
+  renderEval(cfg.eval, cfg.run_id, cfg.aoi);
+
+  const map = new maplibregl.Map({
+    container: "map",
+    center: cfg.center,
+    zoom: cfg.zoom,
+    maxZoom: 20,
+    style: {
+      version: 8,
+      sources: {
+        osm: {
+          type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256, maxzoom: 19,
+          attribution: '<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>',
+        },
+      },
+      layers: [{ id: "osm", type: "raster", source: "osm" }],
+    },
+  });
+  map.addControl(new maplibregl.NavigationControl(), "top-right");
+  map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
+  map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: cfg.attribution }));
+
+  map.on("load", () => {
+    addToggle(map, ["osm"], "Sfondo OpenStreetMap", undefined, true, "raster-opacity");
+    for (const r of cfg.raster) {
+      map.addSource(r.id, { type: "raster", tiles: [new URL(r.tiles, location.href).href.replace(/%7B/g, "{").replace(/%7D/g, "}")],
+        tileSize: 256, minzoom: r.minzoom, maxzoom: r.maxzoom });
+      const visible = r.id === "hillshade";
+      map.addLayer({ id: r.id, type: "raster", source: r.id,
+        layout: { visibility: visible ? "visible" : "none" }, paint: { "raster-resampling": "nearest" } });
+      addToggle(map, [r.id], r.name, undefined, visible, "raster-opacity");
+    }
+    const osmVec = cfg.vector.find((v) => v.id === "osm_highways");
+    if (osmVec) {
+      map.addSource("osm_highways", { type: "geojson", data: osmVec.url });
+      map.addLayer({ id: "osm_highways_casing", type: "line", source: "osm_highways",
+        paint: { "line-color": "#ffffff", "line-width": 3.5, "line-opacity": 0.8 } });
+      map.addLayer({ id: "osm_highways", type: "line", source: "osm_highways",
+        paint: { "line-color": "#1f5fbf", "line-width": 1.6 } });
+      addToggle(map, ["osm_highways", "osm_highways_casing"], osmVec.name, osmVec.count, true);
+    }
+    const cand = cfg.vector.find((v) => v.id === "candidates");
+    if (cand) {
+      map.addSource("candidates", { type: "geojson", data: cand.url });
+      map.addLayer({ id: "candidates_casing", type: "line", source: "candidates",
+        paint: { "line-color": "#202124", "line-width": 4.5, "line-opacity": 0.55 } });
+      map.addLayer({ id: "candidates", type: "line", source: "candidates",
+        paint: { "line-width": 2.5, "line-color": ["interpolate", ["linear"], ["coalesce", ["get", "mean_score"], 0],
+          0.35, "#fdae61", 0.6, "#f46d43", 0.9, "#d7191c"] } });
+      addToggle(map, ["candidates", "candidates_casing"], cand.name, cand.count, true);
+    }
+    if (!cfg.raster.length && !cfg.vector.length) {
+      document.getElementById("layers").append(el("p", { class: "note" },
+        "Nessun livello nel run. Esegui `morloquio run all --aoi " + cfg.aoi + " --run-id " + cfg.run_id + "`."));
+    }
+
+    map.on("click", "candidates", (e) => {
+      const p = e.features[0].properties;
+      new maplibregl.Popup().setLngLat(e.lngLat).setDOMContent(popupTable([
+        ["Candidato", "Stadio A"],
+        ["Punteggio medio", Number(p.mean_score).toFixed(2)],
+        ["Punteggio massimo", Number(p.max_score).toFixed(2)],
+        ["Lunghezza", Number(p.length_m).toFixed(0) + " m"],
+      ])).addTo(map);
+    });
+    map.on("click", "osm_highways", (e) => {
+      if (map.queryRenderedFeatures(e.point, { layers: ["candidates"] }).length) return;
+      const p = e.features[0].properties;
+      const link = el("a", { href: "https://www.openstreetmap.org/way/" + encodeURIComponent(p.osm_id),
+        target: "_blank", rel: "noopener" }, String(p.osm_id));
+      new maplibregl.Popup().setLngLat(e.lngLat).setDOMContent(popupTable([
+        ["Via OSM", link], ["highway", p.highway], ["surface", p.surface], ["tracktype", p.tracktype],
+      ])).addTo(map);
+    });
+    for (const id of ["candidates", "osm_highways"]) {
+      map.on("mouseenter", id, () => { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", id, () => { map.getCanvas().style.cursor = ""; });
+    }
+  });
+}
+main();
+</script>
+</body>
+</html>

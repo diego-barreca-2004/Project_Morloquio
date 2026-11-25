@@ -25,10 +25,10 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import numpy as np
-import yaml
 
 from morloquio.common.aoi import AOI, load_aoi
 from morloquio.common.cache import params_hash
+from morloquio.common.config import pipeline_config
 from morloquio.common.grid import tiles_in_bbox
 from morloquio.common.paths import interim_dir, processed_dir, raw_dir, repo_root, runs_dir
 from morloquio.common.runlog import get_logger, new_run_id
@@ -57,10 +57,6 @@ class Stage:
     run: Callable[[RunContext, str | None], object]
     done: Callable[[RunContext, str | None], bool]
     requires_t1: bool = False
-
-
-def _pipeline_config(name: str) -> dict:
-    return yaml.safe_load((repo_root() / "configs" / "pipeline" / f"{name}.yaml").read_text(encoding="utf-8"))
 
 
 def _tier(tile_id: str) -> str | None:
@@ -169,11 +165,11 @@ ALL_ORDER = ["cube", "terrain", "stage_a", "merge", "eval", "viewer"]
 def stage_params() -> dict[str, dict]:
     from morloquio.ingest.cube import HALO_M
 
-    terrain = _pipeline_config("terrain")
+    terrain = pipeline_config("terrain")
     return {
         "cube": {"halo_m": HALO_M},
         "terrain": terrain,
-        "stage_a": _pipeline_config("stage_a") | {"terrain": terrain},
+        "stage_a": pipeline_config("stage_a") | {"terrain": terrain},
         "merge": {"snap_m": 2.0},
         "eval": {"buffer_m": 5.0},
         "viewer": {},
