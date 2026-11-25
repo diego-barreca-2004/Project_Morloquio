@@ -13,8 +13,7 @@ def _gpx(n_points, tracks=1):
     for t in range(tracks):
         k = pts_per if t < tracks - 1 else n_points - made
         pts = "".join(
-            f'<trkpt lat="{38.07 + i * 1e-5:.6f}" lon="{15.67 + i * 1e-5:.6f}"/>'
-            for i in range(made, made + k)
+            f'<trkpt lat="{38.07 + i * 1e-5:.6f}" lon="{15.67 + i * 1e-5:.6f}"/>' for i in range(made, made + k)
         )
         made += k
         segs.append(f"<trk><trkseg>{pts}</trkseg></trk>")

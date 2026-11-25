@@ -92,9 +92,7 @@ def extract_layers(pbf: Path, bbox, out_gpkg: Path) -> dict[str, int]:
     """Ritaglia sul bbox (west, south, east, north) e scrive i layer nel GeoPackage; ritorna i conteggi."""
     clip = box(*bbox)
     rows: dict[str, list[dict]] = {k: [] for k in _SCHEMAS}
-    way_filter = osmium.filter.KeyFilter("highway", "waterway", "barrier", "building").enable_for(
-        osmium.osm.WAY
-    )
+    way_filter = osmium.filter.KeyFilter("highway", "waterway", "barrier", "building").enable_for(osmium.osm.WAY)
     processor = osmium.FileProcessor(str(pbf), osmium.osm.NODE | osmium.osm.WAY).with_locations()
     for obj in processor.with_filter(way_filter):
         if not obj.is_way():
@@ -124,9 +122,7 @@ def extract_layers(pbf: Path, bbox, out_gpkg: Path) -> dict[str, int]:
     out_gpkg.unlink(missing_ok=True)
     counts = {}
     for layer, (columns, geom_type) in _SCHEMAS.items():
-        gdf = gpd.GeoDataFrame(
-            rows[layer], columns=[*columns, "geometry"], geometry="geometry", crs="EPSG:4326"
-        )
+        gdf = gpd.GeoDataFrame(rows[layer], columns=[*columns, "geometry"], geometry="geometry", crs="EPSG:4326")
         gdf.to_file(
             out_gpkg,
             layer=layer,

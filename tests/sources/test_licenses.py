@@ -36,17 +36,13 @@ def test_normalize_common_strings():
 
 def test_spdx_expressions():
     assert check_code_license("MIT OR Apache-2.0") == "MIT OR Apache-2.0"
-    assert (
-        check_code_license("(Apache-2.0 OR BSD-3-Clause) AND MIT") == "(Apache-2.0 OR BSD-3-Clause) AND MIT"
-    )
+    assert check_code_license("(Apache-2.0 OR BSD-3-Clause) AND MIT") == "(Apache-2.0 OR BSD-3-Clause) AND MIT"
     with pytest.raises(LicenseRejected):
         check_code_license("MIT AND LicenseRef-Proprietary")
 
 
 def test_classifier_phrase_with_parentheses_is_not_expression():
-    assert (
-        check_code_license("Mozilla Public License 2.0 (MPL 2.0)") == "Mozilla Public License 2.0 (MPL 2.0)"
-    )
+    assert check_code_license("Mozilla Public License 2.0 (MPL 2.0)") == "Mozilla Public License 2.0 (MPL 2.0)"
 
 
 def test_gpl_rejected_without_override():

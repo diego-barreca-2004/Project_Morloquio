@@ -109,8 +109,7 @@ def request_session(
         "prodotto": prodotto,
         "layer": product,
         "tileList": [
-            {"fid": str(t.fid), "tavola": t.tavola, "regione": t.regione, "contratto": t.contratto}
-            for t in tiles
+            {"fid": str(t.fid), "tavola": t.tavola, "regione": t.regione, "contratto": t.contratto} for t in tiles
         ],
         "metadataList": [],
     }
@@ -252,9 +251,7 @@ def fetch_product(
             )
             urls = wait_ready(client, p["api_url"], session_id, sleep=sleep)
         except PstError as exc:
-            log.error(
-                "batch PST fallito", extra={"product": product, "tavole": list(wanted), "error": str(exc)}
-            )
+            log.error("batch PST fallito", extra={"product": product, "tavole": list(wanted), "error": str(exc)})
             continue
         for i, url in enumerate(urls):
             zip_path = zips / f"{session_id}_{i}.zip"
@@ -271,9 +268,7 @@ def fetch_product(
                 written = []
             finally:
                 zip_path.unlink(missing_ok=True)
-            log.info(
-                "tavole estratte", extra={"product": product, "session": session_id, "count": len(written)}
-            )
+            log.info("tavole estratte", extra={"product": product, "session": session_id, "count": len(written)})
         try:
             client.request("POST", f"{p['api_url']}/{session_id}/ack")
         except Exception as exc:  # l'ack è di cortesia: non blocca il download

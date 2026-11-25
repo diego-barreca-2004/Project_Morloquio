@@ -34,9 +34,7 @@ def split_bbox(bbox, max_area_deg2: float = 0.25) -> list[tuple[float, float, fl
     nx, ny = math.ceil((east - west) / side), math.ceil((north - south) / side)
     dx, dy = (east - west) / nx, (north - south) / ny
     return [
-        (west + i * dx, south + j * dy, west + (i + 1) * dx, south + (j + 1) * dy)
-        for j in range(ny)
-        for i in range(nx)
+        (west + i * dx, south + j * dy, west + (i + 1) * dx, south + (j + 1) * dy) for j in range(ny) for i in range(nx)
     ]
 
 
