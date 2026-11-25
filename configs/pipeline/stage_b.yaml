@@ -1,0 +1,62 @@
+# Stadio B — segmentazione con rete neurale (ADR 0004). Valori motivati in docs/decisions/0004-stadio-b-ml.md.
+
+features:
+  tanh_div: 3.0          # x_norm = tanh((x − mediana) / (3 · MAD)): lineare entro ±1,5 MAD, limitato a ±1
+
+labels:
+  # semilarghezza (m) del corridoio positivo attorno alla centerline OSM, per classe highway
+  half_width_m:
+    motorway: 6.0
+    trunk: 5.0
+    primary: 4.0
+    secondary: 3.5
+    tertiary: 3.0
+    unclassified: 2.5
+    residential: 2.5
+    living_street: 2.5
+    service: 2.0
+    track: 1.5
+    path: 1.0
+    footway: 1.0
+    bridleway: 1.0
+    cycleway: 1.0
+    steps: 1.0
+    default: 1.5
+  ignore_band_m: 3.0     # oltre il corridoio: OSM può essere spostato di qualche metro, peso 0
+  unlabeled_weight: 0.1  # pixel lontani da OSM: non etichettati (OSM è incompleto), negativi deboli
+
+folds:
+  k: 5
+  block_tiles: 3         # blocchi 3 × 3 tile (~2,6 × 3,3 km) sempre nello stesso fold
+
+model:
+  base: 32
+  depth: 4
+  attention: true
+
+loss:
+  focal_gamma: 2.0
+  dice_weight: 1.0
+  cldice_weight: 0.5
+  cldice_iters: 10
+
+train:
+  patch: 256
+  batch: 16
+  positive_fraction: 0.6 # quota di patch centrate su un pixel OSM
+  patches_per_epoch: 1600
+  epochs: 40
+  lr: 0.001
+  weight_decay: 0.0001
+  patience: 8
+  channel_dropout: 0.2
+  seed: 0
+
+predict:
+  window: 512
+  overlap: 128
+  tta: true
+
+vectorize:
+  threshold: 0.5
+  min_length_m: 10.0

@@ -469,3 +469,87 @@ bench = max_w score_w, poi robust_normalize
 - [ ] **Step 4:** `uv run morloquio view --run-id <id>` → verifica che si apra e mostri tutti i layer; schermata salvata in `docs/benchmarks/stage-a-pilot.png`.
 - [ ] **Step 5:** `make check` verde; runbook con: variabili d'ambiente, comandi, dove stanno i dati, come aprire una tile a ogni stadio, risultati del pilota.
 - [ ] **Step 6:** Commit `docs: runbook e risultati Stadio A pilota`; push; aggiorna la descrizione della PR draft con i risultati.
+
+---
+
+## Addendum — Stadio B anticipato (decisione del proprietario, 2026-11-25 23:58)
+
+Il proprietario ha chiesto di passare al ML perché lo Stadio A geometrico non può arrivare a 0,98 (pilot-002: 0,185).
+Motivazione, scelte e fonti in `docs/decisions/0004-stadio-b-ml.md` e `docs/research/2026-11-26-ml-strade-da-lidar.md`.
+Codice in `src/morloquio/stage_b/`; parametri in `configs/pipeline/stage_b.yaml`.
+
+**Vincoli aggiuntivi:** nessun canale di ingresso derivato da OSM (la metrica sarebbe finta); valutazione solo
+out-of-fold (ogni tile predetta da un modello che non l'ha vista); loss solo sul nucleo della tile (l'alone può
+essere il nucleo di una tile di test); Inkling scaricato dalla VRAM (`keep_alive: 0`) prima di addestrare.
+
+**Review Focus aggiuntivo:** tile con DTM parziale (bordo del rilievo) → pesi 0 dove manca il DTM, nessun NaN nel
+tensore; tile senza vie OSM → solo esempi non etichettati, nessuna divisione per zero; fold senza tile di validazione
+→ errore chiaro; modello assente per una tile da predire → `skipped`, non crash; GPU assente → CPU con avviso.
+
+### Task 20: Canali per pixel dello Stadio B
+
+**Files:** Create `src/morloquio/stage_b/{__init__,features}.py`, `configs/pipeline/stage_b.yaml`, `docs/decisions/0004-stadio-b-ml.md`; Test `tests/stage_b/test_features.py`
+
+**Interfaces:**
+- Consumes: cubo (Task 11), derivati (Task 12), funzioni dello Stadio A (Task 13), punti GPS (Task 8).
+- Produces: `CHANNELS: tuple[str, ...]`; `raw_channels(tile_id, params, gps_xy=None) -> dict[str, ndarray]`;
+  `fit_normalization(tile_ids, params, gps_xy=None, sample_px=200_000) -> dict[str, tuple[float, float]]` (centro, scala robusti);
+  `build_features(tile_id, params, norm, gps_xy=None) -> Path` → `processed/stage_b/<hash>/<tile>/features.npy`
+  (float16, C×H×W, tanh((x−c)/s), NaN→0, ultimo canale `valid`) + `meta.json` (canali, transform, crs, norm).
+
+- [ ] Test: `test_channels_shape_and_no_nan` (cubo sintetico con buco NaN → array C×H×W senza NaN, `valid`=0 nel buco);
+  `test_normalization_is_global_not_per_tile` (stessa quota/pendenza in due tile → stesso valore normalizzato);
+  `test_missing_gps_gives_zero_channel`. FAIL → implementa → PASS → commit `feat(stage_b): canali per pixel`.
+
+### Task 21: Etichette OSM positive-unlabeled e fold spaziali
+
+**Files:** Create `src/morloquio/stage_b/{labels,folds}.py`; Test `tests/stage_b/test_labels.py`, `tests/stage_b/test_folds.py`
+
+**Interfaces:**
+- Produces: `rasterize_labels(ways: GeoDataFrame, transform, shape, core: Polygon, valid: ndarray, params) -> tuple[ndarray, ndarray]`
+  (target uint8 0/1 entro la semilarghezza della classe; peso float32: 1 sui positivi, 0 nella fascia di incertezza,
+  `unlabeled_weight` altrove, 0 fuori nucleo e dove manca il DTM);
+  `assign_folds(tile_ids, k, block_tiles, km_by_tile) -> dict[str, int]` (blocchi `block_tiles`×`block_tiles` di tile
+  contigue, assegnati ai fold bilanciando i km OSM, deterministico).
+- [ ] Test: `test_label_width_by_class`, `test_ignore_band_has_zero_weight`, `test_outside_core_zero_weight`,
+  `test_blocks_never_split_across_folds`, `test_folds_balanced_and_deterministic`. FAIL → implementa → PASS → commit.
+
+### Task 22: Rete e loss
+
+**Files:** Create `src/morloquio/stage_b/{model,losses}.py`; Test `tests/stage_b/test_model.py`, `tests/stage_b/test_losses.py`
+
+**Interfaces:**
+- Produces: `UNet(in_ch: int, base: int = 32, depth: int = 4, attention: bool = True)` (blocchi residui, attention gate
+  sulle skip, uscita 1 logit); `soft_skeleton(p, iters)`, `masked_focal_bce(logits, target, weight, gamma)`,
+  `masked_soft_dice(prob, target, weight)`, `soft_cldice(prob, target, weight, iters)`, `total_loss(logits, target, weight, params) -> (Tensor, dict)`.
+- [ ] Test: `test_unet_shape_any_multiple_of_16`, `test_zero_weight_pixels_do_not_affect_loss`,
+  `test_cldice_penalizes_broken_line_more_than_thick_line`, `test_overfits_single_patch` (50 passi → loss ↓ 80%). FAIL → implementa → PASS → commit.
+
+### Task 23: Addestramento k-fold e predizione
+
+**Files:** Create `src/morloquio/stage_b/{dataset,train,predict}.py`; Test `tests/stage_b/test_train.py`, `tests/stage_b/test_predict.py`
+
+**Interfaces:**
+- Produces: `PatchDataset(tiles, patch, positive_fraction, augment)`; `train_fold(fold, train_tiles, val_tiles, params, out_dir) -> Path`
+  (`model.pt` + `history.json`, AMP bf16, AdamW, early stopping sulla completezza di validazione);
+  `predict_tile(tile_id, model_path, params, out_dir) -> Path` (finestre sovrapposte con fusione gaussiana, TTA diedrale 8 →
+  `runs/<run>/stage_b/<tile>/score.tif` float32 0–1); `unload_llm()` (Ollama `keep_alive: 0`).
+- [ ] Test: `test_train_fold_tiny_runs_on_cpu` (2 tile sintetiche 128 px, 3 epoche, file scritti),
+  `test_predict_matches_training_grid` (stessa transform del cubo, valori in [0,1], NaN fuori DTM),
+  `test_tta_is_equivariant` (rete identità → stessa uscita). FAIL → implementa → PASS → commit.
+
+### Task 24: Integrazione CLI, vettorizzazione e valutazione dello Stadio B
+
+**Files:** Modify `src/morloquio/cli.py`, `src/morloquio/candidates/vectorize.py`, `src/morloquio/eval/osm_recall.py`, `src/morloquio/viewer/build.py`; Test `tests/test_cli.py`, `tests/eval/test_osm_recall.py`
+
+**Interfaces:**
+- `vectorize_tile(..., stage="stage_a")`, `merge_run(run_id, stage="stage_a")`, `evaluate_run(run_id, aoi, buffer_m, stage="stage_a")` → `eval/<stage>.json`.
+- Stadi CLI: `b_features`, `b_train` (globale), `b_predict`, `b_merge`, `b_eval`; `run b` li esegue in ordine e poi `viewer`.
+- [ ] Test: `test_stage_b_stages_registered`, `test_eval_writes_per_stage_report`, `test_b_predict_skips_without_model`. FAIL → implementa → PASS → commit.
+
+### Task 25: Pilota con lo Stadio B, iterazione verso 0,98, runbook, PR
+
+- [ ] `run b --run-id pilot-b-001`; leggi `eval/stage_b.json` (completezza e correttezza out-of-fold, per classe).
+- [ ] Itera (canali, etichette, loss, soglia, post-elaborazione del grafo) finché completezza ≥ 0,98 o il limite è
+  documentato con numeri; ogni modifica e il suo motivo nel runbook.
+- [ ] Chiudi il Task 19 (runbook, README, DATA_LICENSES, schermata, `make check`, PR).
