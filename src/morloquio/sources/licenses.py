@@ -48,6 +48,7 @@ CODE_ALLOWED = {
     "HPND",
     "Unlicense",
     "Zlib",
+    "BSL-1.0",  # Boost Software License 1.0, permissiva, approvata OSI
     "0BSD",
     "CC0-1.0",
     "public-domain",

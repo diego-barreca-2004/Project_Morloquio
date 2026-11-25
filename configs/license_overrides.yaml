@@ -4,5 +4,6 @@
 # Strato di sistema (driver NVIDIA, CUDA): ammesso per scelta esplicita dello spec (§3.6), non è codice del progetto.
 system_layer_prefixes:
   - "nvidia-"
+  - "cuda-toolkit"  # meta-pacchetto del runtime CUDA installato da torch (nessuna licenza nei metadati)
 
 packages: {}

@@ -23,6 +23,7 @@ dependencies = [
     "scipy>=1.18.1",
     "shapely>=2.2.0",
     "skan>=0.13.1",
+    "torch==2.14.1",
 ]
 
 [project.scripts]
@@ -58,3 +59,13 @@ dev = [
     "pytest>=9.2.0",
     "ruff>=0.17.6",
 ]
+
+# PyTorch con CUDA 13.0 (RTX 5070 Ti, Blackwell): indice ufficiale PyTorch, usato solo per torch.
+# I pacchetti nvidia-* che porta con sé sono strato di sistema (spec §3.6, configs/license_overrides.yaml).
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }

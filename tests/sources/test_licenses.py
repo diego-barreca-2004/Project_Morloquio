@@ -41,6 +41,12 @@ def test_spdx_expressions():
         check_code_license("MIT AND LicenseRef-Proprietary")
 
 
+def test_torch_license_expression_accepted():
+    # espressione dichiarata da torch 2.14: tutte licenze permissive approvate OSI (BSL-1.0 = Boost)
+    expr = "Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND BSL-1.0 AND MIT"
+    assert check_code_license(expr) == expr
+
+
 def test_classifier_phrase_with_parentheses_is_not_expression():
     assert check_code_license("Mozilla Public License 2.0 (MPL 2.0)") == "Mozilla Public License 2.0 (MPL 2.0)"
 
