@@ -152,6 +152,157 @@ def _viewer_done(ctx, _):
     return _fresh(ctx.run_dir / "viewer" / "layers.json", inputs)
 
 
+# ------------------------------------------------------------------------------------------- Stadio B (ADR 0004)
+
+
+def _b_dir(ctx) -> Path:
+    return ctx.run_dir / "stage_b"
+
+
+def _t1_tiles(ctx) -> list[str]:
+    return [t for t in tiles_in_bbox(ctx.aoi.bbox) if _tier(t) == "T1"]
+
+
+def _b_norm_run(ctx, _):
+    import random
+
+    from morloquio.stage_b.features import fit_normalization
+
+    tiles = _t1_tiles(ctx)
+    n = int(ctx.params["stage_b"].get("features", {}).get("norm_tiles", 32))
+    sample = sorted(random.Random(0).sample(tiles, min(n, len(tiles))))
+    norm = fit_normalization(sample, ctx.params["stage_b"], ctx.gps_xy)
+    _b_dir(ctx).mkdir(parents=True, exist_ok=True)
+    _write_json_atomic(_b_dir(ctx) / "norm.json", {"tiles": sample, "norm": norm})
+
+
+def _b_norm_done(ctx, _):
+    return (_b_dir(ctx) / "norm.json").exists()
+
+
+def _b_norm(ctx) -> dict[str, tuple[float, float]]:
+    raw = json.loads((_b_dir(ctx) / "norm.json").read_text())["norm"]
+    return {k: tuple(v) for k, v in raw.items()}
+
+
+@functools.lru_cache(maxsize=2)
+def _osm_ways(aoi_name: str, work_crs: str):
+    import geopandas as gpd
+
+    from morloquio.eval.osm_recall import reference_ways
+
+    highways = gpd.read_file(interim_dir("osm") / f"{aoi_name}.gpkg", layer="highways")
+    return reference_ways(highways).to_crs(work_crs)
+
+
+def _b_features_run(ctx, tile):
+    from morloquio.stage_b.features import build_features
+    from morloquio.stage_b.labels import build_labels
+
+    d = build_features(tile, ctx.params["stage_b"], _b_norm(ctx), ctx.gps_xy)
+    build_labels(d, _osm_ways(ctx.aoi.name, ctx.aoi.work_crs), ctx.params["stage_b"]["labels"])
+
+
+def _b_features_done(ctx, tile):
+    from morloquio.stage_b.features import features_dir
+
+    d = features_dir(ctx.params["stage_b"], _b_norm(ctx)) / tile
+    dtm, osm = processed_dir("cube") / tile / "dtm.tif", interim_dir("osm") / f"{ctx.aoi.name}.gpkg"
+    if not (_fresh(d / "features.npy", [dtm]) and _fresh(d / "weight.npy", [dtm, osm])):
+        return False
+    return json.loads((d / "labels.json").read_text())["params"] == ctx.params["stage_b"]["labels"]
+
+
+def _b_tile_dirs(ctx) -> dict[str, Path]:
+    from morloquio.stage_b.features import features_dir
+
+    root = features_dir(ctx.params["stage_b"], _b_norm(ctx))
+    return {t: root / t for t in _t1_tiles(ctx) if (root / t / "weight.npy").exists()}
+
+
+def _b_models(ctx) -> list[Path]:
+    k = int(ctx.params["stage_b"]["folds"]["k"])
+    return [_b_dir(ctx) / "models" / f"fold_{f}" / "model.pt" for f in range(k)]
+
+
+def _b_train_run(ctx, _):
+    from morloquio.agents.llm import unload
+    from morloquio.stage_b.folds import assign_folds
+    from morloquio.stage_b.train import train_fold
+
+    p = ctx.params["stage_b"]
+    k = int(p["folds"]["k"])
+    dirs = _b_tile_dirs(ctx)
+    positives = {t: float(np.load(d / "target.npy").sum()) for t, d in dirs.items()}  # pixel OSM ≈ km di vie
+    folds = assign_folds(sorted(dirs), k, int(p["folds"]["block_tiles"]), positives)
+    _b_dir(ctx).mkdir(parents=True, exist_ok=True)
+    _write_json_atomic(_b_dir(ctx) / "folds.json", folds)
+    unload()  # Inkling occupa ~10 GB dei 12 della GPU
+    for f, model in enumerate(_b_models(ctx)):
+        if not ctx.force and model.exists():
+            continue
+        val_fold = (f + 1) % k  # test = f, validazione (early stopping) = f+1, addestramento = gli altri
+        train = [dirs[t] for t, g in sorted(folds.items()) if g not in (f, val_fold)]
+        val = [dirs[t] for t, g in sorted(folds.items()) if g == val_fold]
+        train_fold(f, train, val, p, model.parent)
+
+
+def _b_train_done(ctx, _):
+    return (_b_dir(ctx) / "folds.json").exists() and all(m.exists() for m in _b_models(ctx))
+
+
+def _b_predict_run(ctx, _):
+    from morloquio.candidates.vectorize import vectorize_tile
+    from morloquio.stage_b.predict import predict_tile
+
+    p = ctx.params["stage_b"]
+    folds = json.loads((_b_dir(ctx) / "folds.json").read_text())
+    log = get_logger("cli", run_id=ctx.run_id, stage="b_predict")
+    dirs, report = None, {}
+    for tile, f in sorted(folds.items()):
+        model = _b_dir(ctx) / "models" / f"fold_{f}" / "model.pt"
+        out = _b_dir(ctx) / tile
+        if not model.exists():
+            report[tile] = f"skipped: nessun modello per il fold {f}"
+            continue
+        if not ctx.force and _fresh(out / "candidates.gpkg", [model]):
+            report[tile] = "skipped"
+            continue
+        try:
+            dirs = dirs or _b_tile_dirs(ctx)
+            predict_tile(dirs[tile], model, p, out)  # modello del fold della tile: non l'ha mai vista
+            vectorize_tile(tile, p["vectorize"], ctx.run_id, stage="stage_b")
+            report[tile] = "ok"
+        except Exception as exc:  # una tile rotta non ferma le altre
+            log.exception("predizione fallita", extra={"tile_id": tile})
+            report[tile] = f"error: {type(exc).__name__}: {exc}"
+    _write_json_atomic(_b_dir(ctx) / "predict.json", report)
+    if any(v.startswith("error") for v in report.values()):
+        raise RuntimeError("predizione fallita su alcune tile, vedi stage_b/predict.json")
+
+
+def _b_merge_run(ctx, _):
+    from morloquio.candidates.vectorize import merge_run
+
+    merge_run(ctx.run_id, stage="stage_b")
+
+
+def _b_merge_done(ctx, _):
+    root = _b_dir(ctx)
+    return _fresh(root / "candidates_merged.gpkg", sorted(root.glob("*/candidates.gpkg")))
+
+
+def _b_eval_run(ctx, _):
+    from morloquio.eval.osm_recall import evaluate_run
+
+    evaluate_run(ctx.run_id, ctx.aoi, float(ctx.params["eval"]["buffer_m"]), stage="stage_b")
+
+
+def _b_eval_done(ctx, _):
+    inputs = [_b_dir(ctx) / "candidates_merged.gpkg", interim_dir("osm") / f"{ctx.aoi.name}.gpkg"]
+    return _fresh(ctx.run_dir / "eval" / "stage_b.json", inputs)
+
+
 STAGES: dict[str, Stage] = {
     "cube": Stage("cube", per_tile=True, run=_cube_run, done=_cube_done),
     "terrain": Stage("terrain", per_tile=True, run=_terrain_run, done=_terrain_done, requires_t1=True),
@@ -159,8 +310,15 @@ STAGES: dict[str, Stage] = {
     "merge": Stage("merge", per_tile=False, run=_merge_run, done=_merge_done),
     "eval": Stage("eval", per_tile=False, run=_eval_run, done=_eval_done),
     "viewer": Stage("viewer", per_tile=False, run=_viewer_run, done=_viewer_done),
+    "b_norm": Stage("b_norm", per_tile=False, run=_b_norm_run, done=_b_norm_done),
+    "b_features": Stage("b_features", per_tile=True, run=_b_features_run, done=_b_features_done, requires_t1=True),
+    "b_train": Stage("b_train", per_tile=False, run=_b_train_run, done=_b_train_done),
+    "b_predict": Stage("b_predict", per_tile=False, run=_b_predict_run, done=lambda ctx, _: False),
+    "b_merge": Stage("b_merge", per_tile=False, run=_b_merge_run, done=_b_merge_done),
+    "b_eval": Stage("b_eval", per_tile=False, run=_b_eval_run, done=_b_eval_done),
 }
 ALL_ORDER = ["cube", "terrain", "stage_a", "merge", "eval", "viewer"]
+B_ORDER = ["b_norm", "b_features", "b_train", "b_predict", "b_merge", "b_eval", "viewer"]
 
 
 def stage_params() -> dict[str, dict]:
@@ -171,6 +329,7 @@ def stage_params() -> dict[str, dict]:
         "cube": {"halo_m": HALO_M},
         "terrain": terrain,
         "stage_a": pipeline_config("stage_a") | {"terrain": terrain},
+        "stage_b": pipeline_config("stage_b") | {"terrain": terrain},
         "merge": {"snap_m": 2.0},
         "eval": {"buffer_m": 5.0},
         "viewer": {},
@@ -190,8 +349,8 @@ def _run_tile(stage_name: str, ctx: RunContext, tile: str | None) -> str:
                 return f"skipped: tier {tier}"
         if not ctx.force and stage.done(ctx, tile):
             return "skipped"
-        stage.run(ctx, tile)
-        return "ok"
+        result = stage.run(ctx, tile)
+        return result if isinstance(result, str) else "ok"  # uno stadio può dire da sé "skipped: <motivo>"
     except Exception as exc:  # una tile rotta non ferma le altre: lo stato finisce in run.json
         log.exception("stadio fallito")
         return f"error: {type(exc).__name__}: {exc}"
@@ -378,7 +537,7 @@ def build_parser() -> argparse.ArgumentParser:
     fetch.add_argument("--aoi", required=True)
     fetch.add_argument("--sources", type=_csv)
     run = sub.add_parser("run", help="esegue uno stadio (o tutti)")
-    run.add_argument("stage", choices=[*STAGES, "all"])
+    run.add_argument("stage", choices=[*STAGES, "all", "b"])
     run.add_argument("--aoi", required=True)
     run.add_argument("--run-id")
     run.add_argument("--tiles", type=_csv)
@@ -399,11 +558,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "view":
         return cmd_view(args.run_id, args.port)
     aoi = load_aoi(args.aoi)
-    stages = ALL_ORDER if args.stage == "all" else [args.stage]
+    stages = {"all": ALL_ORDER, "b": B_ORDER}.get(args.stage, [args.stage])
     ctx = RunContext(aoi=aoi, run_id=args.run_id or new_run_id(), force=args.force)
     known = stage_params()
-    ctx.params = {s: known.get(s, {}) for s in {*stages, "terrain", "stage_a", "eval"}}
-    if "stage_a" in stages:
+    ctx.params = {s: known.get(s, {}) for s in {*stages, "terrain", "stage_a", "stage_b", "eval"}}
+    if {"stage_a", "b_norm", "b_features"} & set(stages):
         ctx.gps_xy = _load_gps(aoi)
     tiles = args.tiles or tiles_in_bbox(aoi.bbox)
     code = run_stages(stages, ctx, tiles, workers=max(1, args.workers))

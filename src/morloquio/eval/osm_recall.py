@@ -110,10 +110,10 @@ def lidar_mask(aoi: AOI):
     return shapely.union_all(parts) if parts else shapely.Polygon()
 
 
-def evaluate_run(run_id: str, aoi: AOI, buffer_m: float = 5.0) -> Path:
+def evaluate_run(run_id: str, aoi: AOI, buffer_m: float = 5.0, stage: str = "stage_a") -> Path:
     highways = gpd.read_file(interim_dir("osm") / f"{aoi.name}.gpkg", layer="highways")
     reference = reference_ways(highways).to_crs(aoi.work_crs)
-    cand_path = runs_dir() / run_id / "stage_a" / "candidates_merged.gpkg"
+    cand_path = runs_dir() / run_id / stage / "candidates_merged.gpkg"
     candidates = gpd.read_file(cand_path).to_crs(aoi.work_crs)
     mask = lidar_mask(aoi)
     out = runs_dir() / run_id / "eval"
@@ -121,6 +121,7 @@ def evaluate_run(run_id: str, aoi: AOI, buffer_m: float = 5.0) -> Path:
     comp = completeness(reference, candidates, buffer_m, mask)
     report = {
         "run_id": run_id,
+        "stage": stage,
         "aoi": aoi.name,
         "buffer_m": buffer_m,
         "mask_km2": mask.area / 1e6,
@@ -131,7 +132,7 @@ def evaluate_run(run_id: str, aoi: AOI, buffer_m: float = 5.0) -> Path:
         "exit_threshold": EXIT_THRESHOLD,
         "passed": bool(comp >= EXIT_THRESHOLD),
     }
-    (out / "stage_a.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-    report_by_class(reference, candidates, buffer_m, mask).to_csv(out / "stage_a_by_class.csv", index=False)
-    log.info("valutazione Stadio A", extra={k: v for k, v in report.items() if k != "run_id"})
-    return out / "stage_a.json"
+    (out / f"{stage}.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    report_by_class(reference, candidates, buffer_m, mask).to_csv(out / f"{stage}_by_class.csv", index=False)
+    log.info("valutazione", extra={k: v for k, v in report.items() if k != "run_id"})
+    return out / f"{stage}.json"

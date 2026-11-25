@@ -137,7 +137,8 @@ def test_lidar_mask_is_valid_dtm_inside_t1_cores(pilot):
     assert mask.area == pytest.approx(core.area / 2, rel=0.1)
 
 
-def test_evaluate_run_writes_reports(pilot, tmp_path):
+@pytest.mark.parametrize("stage", ["stage_a", "stage_b"])
+def test_evaluate_run_writes_reports(pilot, tmp_path, stage):
     aoi, transform, width, height = pilot
     x0 = transform.c + 200  # dentro la metà valida della tile T1
     y_mid = transform.f - height / 2
@@ -159,7 +160,7 @@ def test_evaluate_run_writes_reports(pilot, tmp_path):
     osm = tmp_path / "data" / "interim" / "osm"
     osm.mkdir(parents=True)
     ref.to_file(osm / "t.gpkg", layer="highways", engine="pyogrio")
-    run = tmp_path / "runs" / "r1" / "stage_a"
+    run = tmp_path / "runs" / "r1" / stage
     run.mkdir(parents=True)
     cand = gpd.GeoDataFrame(
         {"length_m": [100.0], "mean_score": [0.8], "max_score": [0.9]},
@@ -167,11 +168,11 @@ def test_evaluate_run_writes_reports(pilot, tmp_path):
         crs=CRS,
     )
     cand.to_file(run / "candidates_merged.gpkg", layer="candidates", engine="pyogrio")
-    out = evaluate_run("r1", aoi)
-    assert out == tmp_path / "runs" / "r1" / "eval" / "stage_a.json"
+    out = evaluate_run("r1", aoi, stage=stage)
+    assert out == tmp_path / "runs" / "r1" / "eval" / f"{stage}.json"
     rep = json.loads(out.read_text())
     assert rep["completeness"] == pytest.approx(0.5, abs=0.01)
     assert rep["correctness"] == pytest.approx(1.0, abs=0.01)
     assert rep["exit_threshold"] == 0.98 and rep["passed"] is False
-    by_class = pd.read_csv(out.parent / "stage_a_by_class.csv")
+    by_class = pd.read_csv(out.parent / f"{stage}_by_class.csv")
     assert set(by_class.highway) == {"path", "track"}

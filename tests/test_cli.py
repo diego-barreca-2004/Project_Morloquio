@@ -128,3 +128,28 @@ def test_view_server_binds_localhost(dirs):
             assert b"ok" in resp.read()
     finally:
         server.server_close()
+
+
+def test_stage_b_stages_registered():
+    assert cli.B_ORDER == ["b_norm", "b_features", "b_train", "b_predict", "b_merge", "b_eval", "viewer"]
+    assert all(s in cli.STAGES for s in cli.B_ORDER)
+    assert cli.build_parser().parse_args(["run", "b", "--aoi", "morloquio"]).stage == "b"
+    assert "stage_b" in cli.stage_params()
+
+
+def test_stage_can_report_its_own_skip(monkeypatch, dirs):
+    monkeypatch.setitem(
+        cli.STAGES, "maybe", Stage("maybe", per_tile=True, run=lambda c, t: "skipped: niente da fare", done=_fake_done)
+    )
+    ctx = cli.RunContext(aoi=cli.load_aoi("morloquio"), run_id="r1")
+    assert cli.run_stages(["maybe"], ctx, ["t1"]) == 0
+    assert _runjson(dirs)["tiles"]["t1"]["maybe"] == "skipped: niente da fare"
+
+
+def test_b_predict_skips_without_model(dirs):
+    ctx = cli.RunContext(aoi=cli.load_aoi("morloquio"), run_id="r1", params=cli.stage_params())
+    (ctx.run_dir / "stage_b").mkdir(parents=True)
+    (ctx.run_dir / "stage_b" / "folds.json").write_text(json.dumps({"N3807E01567": 0}))
+    cli._b_predict_run(ctx, None)
+    report = json.loads((ctx.run_dir / "stage_b" / "predict.json").read_text())
+    assert report["N3807E01567"].startswith("skipped: nessun modello")

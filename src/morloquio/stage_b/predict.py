@@ -84,7 +84,9 @@ def predict_tile(tile_dir: Path, model_path: Path, params: dict, out_dir: Path) 
     device = resolve_device(pp.get("device", "auto"))
     meta = json.loads((Path(tile_dir) / "meta.json").read_text())
     x = np.load(Path(tile_dir) / "features.npy").astype("float32")
-    prob = predict_array(load_model(model_path, device), x, int(pp["window"]), int(pp["overlap"]), bool(pp["tta"]), device)
+    prob = predict_array(
+        load_model(model_path, device), x, int(pp["window"]), int(pp["overlap"]), bool(pp["tta"]), device
+    )
     prob[x[meta["channels"].index("valid")] < 0.5] = np.nan
     out_dir.mkdir(parents=True, exist_ok=True)
     profile = dict(

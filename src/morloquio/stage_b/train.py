@@ -1,4 +1,5 @@
-"""Addestramento di un fold: AdamW + OneCycle, precisione mista bf16 su GPU, early stopping sulla loss di validazione."""
+"""Addestramento di un fold: AdamW + OneCycle, precisione mista bf16 su GPU, early stopping sulla loss di
+validazione."""
 
 from __future__ import annotations
 
@@ -48,7 +49,8 @@ def _evaluate(model, loader, loss_params, device, use_amp) -> dict[str, float]:
     return {
         "val_loss": total / max(n, 1),
         "val_recall_px": tp / max(tp + fn, 1.0),
-        "val_precision_px": tp / max(tp + fp, 1.0),  # limite inferiore: i "falsi positivi" possono essere vie non in OSM
+        # limite inferiore: i "falsi positivi" possono essere vie che OSM non ha
+        "val_precision_px": tp / max(tp + fp, 1.0),
     }
 
 
@@ -106,7 +108,11 @@ def train_fold(fold: int, train_dirs: list[Path], val_dirs: list[Path], params: 
             opt.step()
             sched.step()
             losses.append(float(loss.detach()))
-        row = {"epoch": epoch, "train_loss": float(np.mean(losses)), **_evaluate(model, val_loader, params["loss"], device, use_amp)}
+        row = {
+            "epoch": epoch,
+            "train_loss": float(np.mean(losses)),
+            **_evaluate(model, val_loader, params["loss"], device, use_amp),
+        }
         row["seconds"] = round(time.time() - t0, 1)
         history.append(row)
         log.info("epoca", extra={"fold": fold, **row})

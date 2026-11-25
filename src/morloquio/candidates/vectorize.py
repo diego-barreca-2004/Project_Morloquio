@@ -197,8 +197,8 @@ def _write(gdf: gpd.GeoDataFrame, path: Path) -> Path:
     return path
 
 
-def vectorize_tile(tile_id: str, params: dict, run_id: str) -> Path:
-    d = runs_dir() / run_id / "stage_a" / tile_id
+def vectorize_tile(tile_id: str, params: dict, run_id: str, stage: str = "stage_a") -> Path:
+    d = runs_dir() / run_id / stage / tile_id
     with rasterio.open(d / "score.tif") as ds:
         score = ds.read(1)
         transform = ds.transform
@@ -211,8 +211,8 @@ def vectorize_tile(tile_id: str, params: dict, run_id: str) -> Path:
     return _write(gdf, d / "candidates.gpkg")
 
 
-def merge_run(run_id: str) -> Path:
-    root = runs_dir() / run_id / "stage_a"
+def merge_run(run_id: str, stage: str = "stage_a") -> Path:
+    root = runs_dir() / run_id / stage
     gdfs = [gpd.read_file(p, layer=LAYER) for p in sorted(root.glob("*/candidates.gpkg"))]
     merged = merge_tiles(gdfs)
     log.info("candidati cuciti", extra={"run_id": run_id, "tiles": len(gdfs), "count": len(merged)})
