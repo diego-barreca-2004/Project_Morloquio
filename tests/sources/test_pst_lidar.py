@@ -206,3 +206,18 @@ def test_wait_ready_times_out():
             sleep=lambda s: None,
             clock=lambda: next(clock),
         )
+
+
+def test_download_error_skips_only_that_batch(spec):
+    fake = FakePst()
+    inner = fake.handler
+
+    def handler(request):
+        if request.method == "GET" and "/s2/file/" in str(request.url):
+            return httpx.Response(503)
+        return inner(request)
+
+    tiles = [_tile(i) for i in range(45)]
+    paths = fetch_product(_client(handler), spec, "dtm_1x1", tiles)
+    assert len(paths) == 25
+    assert len(fake.posts) == 3

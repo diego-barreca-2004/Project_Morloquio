@@ -113,3 +113,37 @@ def test_sha_mismatch_raises(tmp_path):
         client.download("https://example.org/f.bin", dest, expected_sha256="0" * 64)
     assert not dest.exists()
     assert not dest.with_name("f.bin.part").exists()
+
+
+class _FlakyStream(httpx.SyncByteStream):
+    def __init__(self, fail):
+        self.fail = fail
+
+    def __iter__(self):
+        yield b"abc"
+        if self.fail:
+            raise httpx.ReadTimeout("lento")
+        yield b"def"
+
+
+def test_download_retries_when_stream_breaks(tmp_path):
+    attempts = []
+
+    def handler(request):
+        attempts.append(1)
+        return httpx.Response(200, stream=_FlakyStream(fail=len(attempts) == 1))
+
+    client, rec = _client(handler)
+    out = client.download("https://example.org/f.bin", tmp_path / "f.bin")
+    assert out.path.read_bytes() == b"abcdef"
+    assert len(attempts) == 2 and len(rec.sleeps) == 1
+
+
+def test_download_gives_up_when_stream_always_breaks(tmp_path):
+    def handler(request):
+        return httpx.Response(200, stream=_FlakyStream(fail=True))
+
+    client, _ = _client(handler, max_attempts=2)
+    with pytest.raises(httpx.ReadTimeout):
+        client.download("https://example.org/f.bin", tmp_path / "f.bin")
+    assert not (tmp_path / "f.bin").exists() and not (tmp_path / "f.bin.part").exists()

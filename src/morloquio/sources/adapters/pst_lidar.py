@@ -18,6 +18,8 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
+import httpx
+
 from morloquio.common.grid import tile_id_from_tavola, tiles_in_bbox
 from morloquio.common.http import FileRecord, PoliteClient
 from morloquio.common.manifest import is_complete, update_manifest
@@ -229,7 +231,12 @@ def fetch_product(
             continue
         for i, url in enumerate(urls):
             zip_path = zips / f"{session_id}_{i}.zip"
-            client.download(url, zip_path)
+            try:
+                client.download(url, zip_path)
+            except httpx.HTTPError as exc:
+                # un batch non scaricabile non ferma gli altri: le sue tavole restano da fare al prossimo giro
+                log.error("download zip PST fallito", extra={"url": url, "error": str(exc)})
+                continue
             try:
                 written = _extract_tifs(zip_path, url, root, wanted, spec.license)
             except zipfile.BadZipFile as exc:

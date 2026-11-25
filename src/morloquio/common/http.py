@@ -115,19 +115,27 @@ class PoliteClient:
         dest = Path(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
         part = dest.with_name(dest.name + ".part")
-        digest = hashlib.sha256()
-        size = 0
-        response = self._send("GET", url, stream=True)
-        try:
-            with open(part, "wb") as fh:
-                for chunk in response.iter_bytes(chunk_size=1 << 20):
-                    fh.write(chunk)
-                    digest.update(chunk)
-                    size += len(chunk)
-                fh.flush()
-                os.fsync(fh.fileno())
-        finally:
-            response.close()
+        for attempt in range(self.max_attempts):
+            digest = hashlib.sha256()
+            size = 0
+            response = self._send("GET", url, stream=True)
+            try:
+                with open(part, "wb") as fh:
+                    for chunk in response.iter_bytes(chunk_size=1 << 20):
+                        fh.write(chunk)
+                        digest.update(chunk)
+                        size += len(chunk)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                break
+            except httpx.TransportError:
+                # trasferimento interrotto a metà (rete lenta o instabile): si ricomincia da capo
+                part.unlink(missing_ok=True)
+                if attempt == self.max_attempts - 1:
+                    raise
+                self._sleep(self._retry_delay(attempt, None))
+            finally:
+                response.close()
         sha = digest.hexdigest()
         if expected_sha256 and sha != expected_sha256.lower():
             part.unlink(missing_ok=True)
