@@ -79,12 +79,15 @@ def _cube_run(ctx, tile):
 
 
 def _cube_done(ctx, tile):
-    from morloquio.ingest.cube import LIDAR_LAYERS, pst_sources_for
+    from morloquio.ingest.cube import CUBE_VERSION, LIDAR_LAYERS, pst_sources_for
 
     meta = processed_dir("cube") / tile / "meta.json"
     if not meta.exists():
         return False
-    recorded = json.loads(meta.read_text()).get("sources", {})
+    info = json.loads(meta.read_text())
+    if info.get("version") != CUBE_VERSION:  # costruito da codice più vecchio (es. prima del restauro LiDAR)
+        return False
+    recorded = info.get("sources", {})
     current = pst_sources_for(tile)
     # nuove tavole scaricate dopo il cubo = cubo da rifare
     return all(

@@ -22,6 +22,7 @@ from morloquio.common.runlog import get_logger
 from morloquio.ingest.restore import restored_source
 
 HALO_M = 64
+CUBE_VERSION = 2  # 2: LiDAR PST restaurato sulla griglia UTM originale (restore.py). Cubi più vecchi si rifanno.
 LIDAR_LAYERS = {"dtm_1x1": "dtm", "dsm_first_1x1": "dsm_first", "dsm_last_1x1": "dsm_last"}
 MIN_VALID_FOR_LIDAR = 0.01  # sotto l'1% di pixel validi nel nucleo la tile non ha LiDAR utile
 
@@ -110,6 +111,7 @@ def build_cube(tile_id: str, aoi: AOI, raw_lidar: dict[str, list[Path]], raw_ort
     out.mkdir(parents=True, exist_ok=True)
     meta: dict = {
         "tile_id": tile_id,
+        "version": CUBE_VERSION,
         "work_crs": aoi.work_crs,
         "halo_m": HALO_M,
         "valid_fraction": {},

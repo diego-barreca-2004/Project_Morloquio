@@ -130,6 +130,21 @@ def test_view_server_binds_localhost(dirs):
         server.server_close()
 
 
+def test_cube_redone_when_built_by_older_code(monkeypatch, dirs):
+    from morloquio.ingest import cube
+
+    d = dirs / "data" / "processed" / "cube" / "N3807E01567"
+    d.mkdir(parents=True)
+    monkeypatch.setattr(cube, "pst_sources_for", lambda t: {p: [] for p in cube.LIDAR_LAYERS})
+    meta = {"tier": "T1", "sources": {layer: [] for layer in cube.LIDAR_LAYERS.values()}}
+    (d / "meta.json").write_text(json.dumps(meta))
+    ctx = cli.RunContext(aoi=cli.load_aoi("morloquio"), run_id="r1")
+    assert cli._cube_done(ctx, "N3807E01567") is False  # cubo di prima del restauro LiDAR: da rifare
+    meta["version"] = cube.CUBE_VERSION
+    (d / "meta.json").write_text(json.dumps(meta))
+    assert cli._cube_done(ctx, "N3807E01567") is True
+
+
 def test_stage_b_stages_registered():
     assert cli.B_ORDER == ["b_norm", "b_features", "b_train", "b_predict", "b_merge", "b_eval", "viewer"]
     assert all(s in cli.STAGES for s in cli.B_ORDER)
