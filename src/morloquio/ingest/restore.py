@@ -129,7 +129,8 @@ def restore_file(src: Path, dest: Path, work_crs: str) -> dict:
         grid, conflicts, (x_first, y_top) = _scatter(x, y, z, ox, oy)
         empty = np.isnan(grid)
         grid = _fill_gaps(grid)
-        part = dest.with_name(dest.name + ".part")
+        # nome temporaneo per processo: più worker possono restaurare la stessa tavola insieme
+        part = dest.with_name(f"{dest.name}.{os.getpid()}.part")
         with rasterio.open(
             part,
             "w",
@@ -157,7 +158,9 @@ def restore_file(src: Path, dest: Path, work_crs: str) -> dict:
             conflicts=conflicts,
             filled_fraction=float(np.mean((empty & valid)[valid])) if valid.any() else 0.0,
         )
-    dest.with_suffix(".json").write_text(json.dumps(info, indent=2), encoding="utf-8")
+    sidecar_tmp = dest.with_name(f"{dest.stem}.{os.getpid()}.json.part")
+    sidecar_tmp.write_text(json.dumps(info, indent=2), encoding="utf-8")
+    os.replace(sidecar_tmp, dest.with_suffix(".json"))
     log.info("restauro LiDAR", extra={k: v for k, v in info.items() if k != "source"} | {"file": src.name})
     return info
 

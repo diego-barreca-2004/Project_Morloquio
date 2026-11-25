@@ -111,6 +111,17 @@ def test_restored_source_caches(monkeypatch, tmp_path):
     assert restored_source(smooth, CRS) == smooth  # la decisione "non serve" è anch'essa in cache
 
 
+def test_restore_does_not_touch_other_writers_part_file(tmp_path):
+    # un altro worker sta scrivendo la stessa tavola: il suo file temporaneo non va toccato
+    dest = tmp_path / "out.tif"
+    foreign = dest.with_name(dest.name + ".part")
+    foreign.write_bytes(b"in scrittura da un altro processo")
+    info = restore_file(nn_source(tmp_path / "nn.tif"), dest, CRS)
+    assert info["restored"] is True and dest.exists()
+    assert foreign.read_bytes() == b"in scrittura da un altro processo"
+    assert not list(tmp_path.glob("out.tif.*.part"))
+
+
 @pytest.mark.parametrize("offset", [(0.5, 0.5), (0.3, 0.1)])
 def test_restore_other_alignments(tmp_path, offset):
     info = restore_file(nn_source(tmp_path / "nn.tif", offset=offset), tmp_path / "out.tif", CRS)
