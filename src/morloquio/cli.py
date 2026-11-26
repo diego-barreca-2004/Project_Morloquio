@@ -257,7 +257,6 @@ def _b_train_done(ctx, _):
 
 
 def _b_predict_run(ctx, _):
-    from morloquio.candidates.vectorize import vectorize_tile
     from morloquio.stage_b.predict import predict_tile
 
     p = ctx.params["stage_b"]
@@ -270,13 +269,12 @@ def _b_predict_run(ctx, _):
         if not model.exists():
             report[tile] = f"skipped: nessun modello per il fold {f}"
             continue
-        if not ctx.force and _fresh(out / "candidates.gpkg", [model]):
+        if not ctx.force and _fresh(out / "score.tif", [model]):
             report[tile] = "skipped"
             continue
         try:
             dirs = dirs or _b_tile_dirs(ctx)
             predict_tile(dirs[tile], model, p, out)  # modello del fold della tile: non l'ha mai vista
-            vectorize_tile(tile, p["vectorize"], ctx.run_id, stage="stage_b")
             report[tile] = "ok"
         except Exception as exc:  # una tile rotta non ferma le altre
             log.exception("predizione fallita", extra={"tile_id": tile})
@@ -284,6 +282,25 @@ def _b_predict_run(ctx, _):
     _write_json_atomic(_b_dir(ctx) / "predict.json", report)
     if any(v.startswith("error") for v in report.values()):
         raise RuntimeError("predizione fallita su alcune tile, vedi stage_b/predict.json")
+
+
+def _b_vectorize_run(ctx, tile):
+    from morloquio.candidates import vectorize
+
+    d = _b_dir(ctx) / tile
+    if not (d / "score.tif").exists():
+        return "skipped: nessuna probabilità"
+    params = ctx.params["stage_b"]["vectorize"]
+    vectorize.vectorize_tile(tile, params, ctx.run_id, stage="stage_b")
+    _write_json_atomic(d / "vectorize.json", params)
+    return "ok"
+
+
+def _b_vectorize_done(ctx, tile):
+    d = _b_dir(ctx) / tile
+    if not (d / "vectorize.json").exists() or not _fresh(d / "candidates.gpkg", [d / "score.tif"]):
+        return False
+    return json.loads((d / "vectorize.json").read_text()) == ctx.params["stage_b"]["vectorize"]
 
 
 def _b_merge_run(ctx, _):
@@ -319,11 +336,12 @@ STAGES: dict[str, Stage] = {
     "b_features": Stage("b_features", per_tile=True, run=_b_features_run, done=_b_features_done, requires_t1=True),
     "b_train": Stage("b_train", per_tile=False, run=_b_train_run, done=_b_train_done),
     "b_predict": Stage("b_predict", per_tile=False, run=_b_predict_run, done=lambda ctx, _: False),
+    "b_vectorize": Stage("b_vectorize", per_tile=True, run=_b_vectorize_run, done=_b_vectorize_done, requires_t1=True),
     "b_merge": Stage("b_merge", per_tile=False, run=_b_merge_run, done=_b_merge_done),
     "b_eval": Stage("b_eval", per_tile=False, run=_b_eval_run, done=_b_eval_done),
 }
 ALL_ORDER = ["cube", "terrain", "stage_a", "merge", "eval", "viewer"]
-B_ORDER = ["b_norm", "b_features", "b_train", "b_predict", "b_merge", "b_eval", "viewer"]
+B_ORDER = ["b_norm", "b_features", "b_train", "b_predict", "b_vectorize", "b_merge", "b_eval", "viewer"]
 
 
 def stage_params() -> dict[str, dict]:

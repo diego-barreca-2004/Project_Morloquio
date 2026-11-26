@@ -146,7 +146,7 @@ def test_cube_redone_when_built_by_older_code(monkeypatch, dirs):
 
 
 def test_stage_b_stages_registered():
-    assert cli.B_ORDER == ["b_norm", "b_features", "b_train", "b_predict", "b_merge", "b_eval", "viewer"]
+    assert cli.B_ORDER == ["b_norm", "b_features", "b_train", "b_predict", "b_vectorize", "b_merge", "b_eval", "viewer"]
     assert all(s in cli.STAGES for s in cli.B_ORDER)
     assert cli.build_parser().parse_args(["run", "b", "--aoi", "morloquio"]).stage == "b"
     assert "stage_b" in cli.stage_params()
@@ -159,6 +159,29 @@ def test_stage_can_report_its_own_skip(monkeypatch, dirs):
     ctx = cli.RunContext(aoi=cli.load_aoi("morloquio"), run_id="r1")
     assert cli.run_stages(["maybe"], ctx, ["t1"]) == 0
     assert _runjson(dirs)["tiles"]["t1"]["maybe"] == "skipped: niente da fare"
+
+
+def test_b_vectorize_redone_when_params_change(monkeypatch, dirs):
+    from morloquio.candidates import vectorize
+
+    ctx = cli.RunContext(aoi=cli.load_aoi("morloquio"), run_id="r1", params=cli.stage_params())
+    tile = "N3807E01567"
+    assert cli._b_vectorize_run(ctx, tile) == "skipped: nessuna probabilità"
+    d = ctx.run_dir / "stage_b" / tile
+    d.mkdir(parents=True)
+    (d / "score.tif").write_bytes(b"x")
+    seen = []
+
+    def fake_vectorize(t, params, run_id, stage):
+        seen.append((t, params["threshold"], stage))
+        (d / "candidates.gpkg").write_bytes(b"x")
+
+    monkeypatch.setattr(vectorize, "vectorize_tile", fake_vectorize)
+    cli._b_vectorize_run(ctx, tile)
+    assert seen == [(tile, ctx.params["stage_b"]["vectorize"]["threshold"], "stage_b")]
+    assert cli._b_vectorize_done(ctx, tile) is True
+    ctx.params["stage_b"]["vectorize"] = ctx.params["stage_b"]["vectorize"] | {"threshold": 0.123}
+    assert cli._b_vectorize_done(ctx, tile) is False  # soglia cambiata: da rifare
 
 
 def test_b_predict_skips_without_model(dirs):
