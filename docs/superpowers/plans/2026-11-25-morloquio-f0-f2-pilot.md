@@ -19,7 +19,7 @@
 - Repo pubblica `diego-barreca-2004/Project_Morloquio`; codice Apache-2.0; identificatori in inglese, commenti e documenti in italiano.
 - Area pilota: bbox `[15.62, 38.03, 15.75, 38.12]` (west, south, east, north, EPSG:4326); nucleo `[15.6663, 38.0666, 15.6891, 38.0846]`; CRS di lavoro `EPSG:32633`.
 - Tile: celle di 0,01°; `tile_id` = `N3807E01567` (cella 38.07–38.08 N, 15.67–15.68 E); tavola PST corrispondente `D38071567_0101`.
-- Cartelle dati: `MORLOQUIO_DATA_DIR` (default `<repo>/data`) e `MORLOQUIO_RUNS_DIR` (default `<repo>/runs`), entrambe ignorate da git. Durante lo sviluppo in worktree puntano a `/home/diebarr/Progetto_Morloquio/data` e `/home/diebarr/Progetto_Morloquio/runs`, così i download sopravvivono al worktree.
+- Cartelle dati: `MORLOQUIO_DATA_DIR` (default `<repo>/data`) e `MORLOQUIO_RUNS_DIR` (default `<repo>/runs`), entrambe ignorate da git. Durante lo sviluppo in worktree puntano a `<repo-principale>/data` e `<repo-principale>/runs`, così i download sopravvivono al worktree.
 - Dipendenze e versioni: Python `>=3.12,<3.13`; ogni dipendenza aggiunta con `uv add`, lock in `uv.lock`.
 - Git: lavoro su branch `f0-f2-pilot`, mai push su `main`; PR draft verso `main`.
 - Cambio rispetto allo spec (§7, scelta dell'assistente): niente Snakemake in F0–F2; orchestrazione con la CLI interna (stadi idempotenti per tile). DVC e MLflow arrivano in F3 con i modelli. Registrato in `docs/decisions/0001-orchestrazione-cli.md`.
@@ -77,7 +77,7 @@ Project_Morloquio/
 - Produces: `morloquio.__version__: str` (`"0.1.0"`); target `make check` (ruff + pytest -m "not live" + license gate).
 
 - [ ] **Step 1:** `gh repo create diego-barreca-2004/Project_Morloquio --public --description "Mappa aperta e automatica di tutte le strade e i sentieri del mondo, da soli dati open (LiDAR, ortofoto, OSM)." --add-readme --license apache-2.0` → `main` creato lato server.
-- [ ] **Step 2:** In `/home/diebarr/Progetto_Morloquio`: `git init`, remote `origin`, `git fetch origin`, allinea `main` a `origin/main`; poi EnterWorktree `f0-f2-pilot` e copia lì `docs/`.
+- [ ] **Step 2:** In `<repo-principale>`: `git init`, remote `origin`, `git fetch origin`, allinea `main` a `origin/main`; poi EnterWorktree `f0-f2-pilot` e copia lì `docs/`.
 - [ ] **Step 3: Test che fallisce**
 
 ```python
@@ -463,7 +463,7 @@ bench = max_w score_w, poi robust_normalize
 - Create: `docs/runbook.md`
 - Modify: `README.md` (stato del progetto, comandi), `DATA_LICENSES.md` (attribuzioni effettive delle fonti usate)
 
-- [ ] **Step 1:** `MORLOQUIO_DATA_DIR=/home/diebarr/Progetto_Morloquio/data MORLOQUIO_RUNS_DIR=/home/diebarr/Progetto_Morloquio/runs uv run morloquio fetch --aoi morloquio` → nel log: tile PST elencate (attese 97), file DTM/DSM scaricati, OSM estratto, tracce GPS, item S2/DEM.
+- [ ] **Step 1:** `MORLOQUIO_DATA_DIR=<repo-principale>/data MORLOQUIO_RUNS_DIR=<repo-principale>/runs uv run morloquio fetch --aoi morloquio` → nel log: tile PST elencate (attese 97), file DTM/DSM scaricati, OSM estratto, tracce GPS, item S2/DEM.
 - [ ] **Step 2:** `uv run morloquio run all --aoi morloquio --workers 8` → `run.json` senza errori; tile senza LiDAR marcate T3.
 - [ ] **Step 3:** Leggi `runs/<run_id>/eval/stage_a.json`: se `completeness < 0.98`, apri `stage_a_by_class.csv` e il visualizzatore sulle vie mancate, correggi pesi/soglie in `stage_a.yaml` (o il rilevatore), riesegui `run stage_a … --force` e ripeti finché il criterio è soddisfatto. Registra i valori finali e il motivo di ogni modifica nel runbook.
 - [ ] **Step 4:** `uv run morloquio view --run-id <id>` → verifica che si apra e mostri tutti i layer; schermata salvata in `docs/benchmarks/stage-a-pilot.png`.

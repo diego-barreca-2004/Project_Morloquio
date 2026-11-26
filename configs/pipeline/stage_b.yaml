@@ -59,11 +59,14 @@ predict:
   tta: true
 
 vectorize:
-  threshold: 0.5
+  threshold: 0.5         # scelta fuori fold sulla curva completezza/correttezza (docs/benchmarks/stage-b-pilot.md)
   min_length_m: 10.0
-  reconnect:             # ricucitura dalle foglie (DeepRoadMapper): A* su 1 − p
-    search_m: 50.0
-    min_graph_m: 100.0   # solo se nel grafo le due linee sono lontane più di così
-    min_mean_score: 0.15 # probabilità media minima lungo il collegamento
-    max_detour: 1.8
-    sample_m: 2.0
+  centerline: ridge      # asse dalla cresta della probabilità: vie vicine fuse nella maschera restano separate
+  # Ricucitura dalle foglie (DeepRoadMapper, A* su 1 − p): disattivata, nel pilota +1,1 punti di completezza per
+  # +177 km di linee (correttezza 0,562 → 0,513). Per attivarla togliere i commenti.
+  # reconnect:
+  #   search_m: 50.0
+  #   min_graph_m: 100.0   # solo se nel grafo le due linee sono lontane più di così
+  #   min_mean_score: 0.15 # probabilità media minima lungo il collegamento
+  #   max_detour: 1.8
+  #   sample_m: 2.0
