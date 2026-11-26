@@ -1,0 +1,4 @@
+# Parametri dei derivati del terreno (Task 12). Cambiarli cambia la cartella processed/terrain/<params_hash>/
+lrm_sigma_m: 10.0
+hillshade_azimuths: [315, 270, 225, 360]
+hillshade_altitude: 45

@@ -1,0 +1,15 @@
+id: osm_gps_traces
+name: Tracce GPS pubbliche di OpenStreetMap
+provider: OpenStreetMap contributors
+license: ODbL-1.0
+license_url: https://www.openstreetmap.org/copyright
+attribution: "© OpenStreetMap contributors"
+resolution_m: null
+protocol: osm-api
+adapter: osm_gps
+verified: "2026-11-25"
+note: Nel pilota solo 29 punti in ~2x2 km (verificato il 2026-11-25).
+params:
+  api_url: https://api.openstreetmap.org/api/0.6/trackpoints
+  page_size: 5000
+  max_area_deg2: 0.25

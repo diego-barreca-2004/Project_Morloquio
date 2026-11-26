@@ -1,0 +1,72 @@
+# Stadio B — segmentazione con rete neurale (ADR 0004). Valori motivati in docs/decisions/0004-stadio-b-ml.md.
+
+features:
+  tanh_div: 3.0          # x_norm = tanh((x − mediana) / (3 · MAD)): lineare entro ±1,5 MAD, limitato a ±1
+
+labels:
+  # semilarghezza (m) del corridoio positivo attorno alla centerline OSM, per classe highway
+  half_width_m:
+    motorway: 6.0
+    trunk: 5.0
+    primary: 4.0
+    secondary: 3.5
+    tertiary: 3.0
+    unclassified: 2.5
+    residential: 2.5
+    living_street: 2.5
+    service: 2.0
+    track: 1.5
+    path: 1.0
+    footway: 1.0
+    bridleway: 1.0
+    cycleway: 1.0
+    steps: 1.0
+    default: 1.5
+  ignore_band_m: 3.0     # oltre il corridoio: OSM può essere spostato di qualche metro, peso 0
+  unlabeled_weight: 0.1  # pixel lontani da OSM: non etichettati (OSM è incompleto), negativi deboli
+
+folds:
+  k: 10                 # test 1 fold, validazione 1, addestramento 8 (Stock 2025: 10 fold come default)
+  block_tiles: 2         # blocchi 2 × 2 tile (~1,8 × 2,2 km): autocorrelazione forte sotto i 20 m (Kattenborn 2022)
+
+model:
+  base: 32
+  depth: 4
+  attention: true
+
+loss:
+  focal_gamma: 2.0
+  dice_weight: 1.0
+  cldice_weight: 0.5
+  cldice_iters: 10
+
+train:
+  patch: 256
+  batch: 16
+  positive_fraction: 0.6 # quota di patch centrate su un pixel OSM
+  patches_per_epoch: 2000 # ~20 s per epoca sulla RTX 5070 Ti (106 patch/s)
+  epochs: 15
+  lr: 0.001
+  weight_decay: 0.0001
+  patience: 5
+  val_patches: 256
+  channel_dropout: 0.2
+  seed: 0
+
+predict:
+  window: 512
+  overlap: 128
+  tta: true
+
+vectorize:
+  threshold: 0.5         # scelta fuori fold sulla curva completezza/correttezza (docs/benchmarks/stage-b-pilot.md)
+  min_length_m: 10.0
+  centerline: ridge      # asse dalla cresta della probabilità: vie vicine fuse nella maschera restano separate
+  # Ricucitura dalle foglie (DeepRoadMapper, A* su 1 − p): disattivata, nel pilota +1,1 punti di completezza per
+  # +177 km di linee (correttezza 0,562 → 0,513). Per attivarla togliere i commenti.
+  # reconnect:
+  #   search_m: 50.0
+  #   min_graph_m: 100.0   # solo se nel grafo le due linee sono lontane più di così
+  #   min_mean_score: 0.15 # probabilità media minima lungo il collegamento
+  #   max_detour: 1.8
+  #   sample_m: 2.0

@@ -1,0 +1,25 @@
+id: pst_lidar
+name: LiDAR Piano Straordinario di Telerilevamento (DTM, DSM first, DSM last 1 m)
+provider: Ministero dell'Ambiente e della Sicurezza Energetica (MASE)
+license: CC-BY-4.0
+license_url: https://gn.mase.gov.it/portale/distribuzione-dati-pst
+attribution: "Ministero dell'Ambiente e della Sicurezza Energetica – Piano Straordinario di Telerilevamento"
+resolution_m: 1.0
+protocol: arcgis-rest
+adapter: pst_lidar
+verified: "2026-11-25"
+note: >-
+  API REST pubblica dell'app ufficiale https://sim.mase.gov.it/pst/ (nessun login). Il firewall del sito blocca i
+  browser automatici: si usano solo client HTTP semplici. Rilievi 2008–2016.
+params:
+  grid_url: https://gis.platform.sim.mase.gov.it/portalgis/rest/services/Hosted/Grigliato_lidar/FeatureServer/2/query
+  api_url: https://sim.mase.gov.it/core/api/esri/api/v1/downloads
+  canale: PST2
+  prodotto: LIDAR_2014
+  products: [dtm_1x1, dsm_first_1x1, dsm_last_1x1]
+  batch_max: 20
+  # Osservato sul file reale D38071567_0101 (2026-11-25): griglia geografica, non metrica
+  crs: EPSG:4326
+  pixel_size_deg: 0.00001  # 1000x1000 px per tavola da 0,01° (~0,88 m E-O x 1,11 m N-S a 38° N)
+  nodata: -9999.0
+  dtype: float32

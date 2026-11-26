@@ -1,0 +1,7 @@
+# Area pilota Morloquio, vicino a Reggio Calabria. Punto di riferimento: 38°04'32.2"N 15°40'39.7"E.
+name: morloquio
+# west, south, east, north in EPSG:4326 — 117 celle da 0,01°, 97 con LiDAR PST
+bbox: [15.62, 38.03, 15.75, 38.12]
+# nucleo di circa 2x2 km attorno a 38.0756 N, 15.6777 E per la revisione di dettaglio
+core_bbox: [15.6663, 38.0666, 15.6891, 38.0846]
+work_crs: EPSG:32633
