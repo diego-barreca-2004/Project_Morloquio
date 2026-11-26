@@ -37,6 +37,41 @@ def test_straight_line_one_segment():
     assert gdf.crs.to_epsg() == 32633
 
 
+def _two_close_roads():
+    """Due vie parallele a 9 m: tra le due la probabilità cala ma resta sopra soglia (macchia unica a 0,35)."""
+    rr, cc = np.mgrid[0:200, 0:200].astype("float32")
+    a = np.exp(-(((cc - 95.5) / 2.5) ** 2))
+    b = np.exp(-(((cc - 104.5) / 2.5) ** 2))
+    score = np.maximum(LOW, 0.6 * np.maximum(a, b) + 0.4 * np.exp(-(((cc - 100) / 6) ** 2)))
+    score[(rr < 20) | (rr > 180)] = LOW
+    return score.astype("float32")
+
+
+def test_ridge_centerline_separates_close_parallel_roads():
+    score = _two_close_roads()
+    assert score[100, 100] >= 0.35 and score[100, 100] < score[100, 95]  # una sola macchia, ma due creste
+    by_mask = extract_candidates(score, T0, CRS, threshold=0.35, min_length_m=10.0)
+    by_ridge = extract_candidates(score, T0, CRS, threshold=0.35, min_length_m=10.0, centerline="ridge")
+    cut = LineString([(560000, 4215000 - 100.5), (560200, 4215000 - 100.5)])  # traversale a metà via
+
+    def xs(gdf):
+        hits = [gdf.geometry.union_all().intersection(cut)]
+        pts = [p for h in hits for p in getattr(h, "geoms", [h]) if not p.is_empty]
+        return sorted(p.x - 560000 for p in pts)
+
+    assert len(xs(by_mask)) == 1 and abs(xs(by_mask)[0] - 100.5) < 1  # asse mediano: a 4–5 m da entrambe le vie
+    left, right = xs(by_ridge)
+    assert abs(left - 96.5) < 1.5 and abs(right - 104.5) < 1.5
+
+
+def test_ridge_centerline_keeps_single_road_whole():
+    score = _empty()
+    rr, cc = np.mgrid[0:200, 0:200]
+    score[(np.abs(rr - cc) <= 2) & (rr >= 20) & (rr <= 180)] = HIGH
+    gdf = extract_candidates(score, T0, CRS, threshold=0.35, min_length_m=10.0, centerline="ridge")
+    assert len(gdf) == 1 and gdf.length_m.iloc[0] == pytest.approx(160 * np.sqrt(2), rel=0.08)
+
+
 def test_short_blobs_removed():
     score = _empty()
     score[50:54, 50:54] = HIGH

@@ -17,7 +17,7 @@ import rasterio
 import shapely
 from pyproj import Transformer
 from rasterio.transform import rowcol, xy
-from scipy.ndimage import binary_closing, label
+from scipy.ndimage import binary_closing, binary_dilation, gaussian_filter, label, map_coordinates
 from scipy.spatial import cKDTree
 from shapely.geometry import LineString, MultiLineString, Polygon, box
 from shapely.ops import linemerge
@@ -103,12 +103,45 @@ def _clean_mask(score: np.ndarray, threshold: float, min_px: int) -> np.ndarray:
     return keep[lab]
 
 
+def _ridge(score: np.ndarray, mask: np.ndarray, sigma_px: float = 1.0, tol: float = 1e-3) -> np.ndarray:
+    """Creste della probabilità dentro la maschera: pixel che sono massimo locale lungo la direzione trasversale.
+
+    La direzione trasversale è l'autovettore dell'autovalore più negativo dell'hessiana (probabilità lisciata).
+    Su un plateau tutti i pixel passano (tolleranza ``tol``) e lo scheletro torna l'asse mediano. Una
+    dilatazione di 2 px dentro la maschera richiude i buchi delle creste agli incroci.
+    """
+    s = gaussian_filter(np.nan_to_num(score, nan=0.0).astype("float64"), sigma_px)
+    sr, sc = np.gradient(s)
+    srr, src = np.gradient(sr)
+    _, scc = np.gradient(sc)
+    theta = 0.5 * np.arctan2(2 * src, srr - scc) + np.pi / 2  # autovettore dell'autovalore minore
+    nr, nc = np.cos(theta), np.sin(theta)
+    rr, cc = np.indices(s.shape, dtype="float64")
+    plus = map_coordinates(s, [rr + nr, cc + nc], order=1, mode="nearest")
+    minus = map_coordinates(s, [rr - nr, cc - nc], order=1, mode="nearest")
+    half_diff = np.hypot((srr - scc) / 2, src)
+    lam_min, lam_max = (srr + scc) / 2 - half_diff, (srr + scc) / 2 + half_diff
+    # cresta: curvatura trasversale negativa; plateau: nessuna curvatura (resta l'asse mediano). Esclude le valli
+    # tra due vie, dove la curvatura trasversale è positiva e la direzione minore corre lungo la valle.
+    shape_ok = (lam_min < -tol) | ((lam_max <= tol) & (lam_min >= -tol))
+    ridge = mask & shape_ok & (s >= plus - tol) & (s >= minus - tol)
+    return binary_dilation(ridge, structure=np.ones((3, 3), bool), iterations=2) & mask
+
+
 def extract_candidates(
-    score: np.ndarray, transform, crs: str, threshold: float, min_length_m: float
+    score: np.ndarray, transform, crs: str, threshold: float, min_length_m: float, centerline: str = "mask"
 ) -> gpd.GeoDataFrame:
-    """Linee candidate dal raster dei punteggi (0–1). Colonne: ``length_m``, ``mean_score``, ``max_score``."""
+    """Linee candidate dal raster dei punteggi (0–1). Colonne: ``length_m``, ``mean_score``, ``max_score``.
+
+    ``centerline="mask"``: asse mediano della maschera sopra soglia. ``"ridge"``: cresta della probabilità (vie
+    vicine fuse nella maschera restano separate se tra le due la probabilità cala).
+    """
     res = abs(transform.a)
     mask = _clean_mask(score, threshold, max(3, int(min_length_m / res)))
+    if centerline == "ridge":
+        mask = _ridge(score, mask)
+    elif centerline != "mask":
+        raise ValueError(f"centerline sconosciuta: {centerline}")
     skel = skeletonize(mask)
     # componenti dello scheletro di un solo pixel: nessun ramo, skan non le gestisce
     lab, _ = label(skel, structure=np.ones((3, 3), bool))
@@ -204,7 +237,14 @@ def vectorize_tile(tile_id: str, params: dict, run_id: str, stage: str = "stage_
         score = ds.read(1)
         transform = ds.transform
         crs = ds.crs.to_string()
-    gdf = extract_candidates(score, transform, crs, float(params["threshold"]), float(params["min_length_m"]))
+    gdf = extract_candidates(
+        score,
+        transform,
+        crs,
+        float(params["threshold"]),
+        float(params["min_length_m"]),
+        centerline=params.get("centerline", "mask"),
+    )
     if params.get("reconnect"):  # ricucitura dei buchi dalle foglie (solo se configurata)
         gdf = reconnect(gdf, score, transform, params["reconnect"])
     gdf = crop_to_core(gdf, tile_id, crs)
