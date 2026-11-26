@@ -18,6 +18,7 @@ from morloquio.candidates.linearity import bench_score, chm_gap_linearity, gps_d
 from morloquio.common.cache import params_hash
 from morloquio.common.paths import processed_dir
 from morloquio.common.runlog import get_logger
+from morloquio.terrain.derivatives import openness
 
 CHANNELS = (
     "slope",
@@ -33,6 +34,8 @@ CHANNELS = (
     "lrm_lin",
     "chm_gap",
     "gps",
+    "open_pos",  # openness positiva 10 m (gradi): < 90 in solchi e trincee, non dipende dalla pendenza
+    "open_neg",  # openness negativa 10 m: < 90 su creste e cigli di scarpata
     "valid",  # 1 dove il DTM è valido
 )
 _TERRAIN = ("slope", "hillshade", "lrm", "curv_profile", "curv_plan")
@@ -76,6 +79,8 @@ def _raw(tile_id: str, params: dict, gps_xy: np.ndarray | None) -> tuple[dict[st
         out["gps"] = gps_density(gps_xy, profile["transform"], dtm.shape)
     else:
         out["gps"] = np.zeros_like(dtm)
+    radius = float(params.get("features", {}).get("openness_radius_m", 10.0))
+    out["open_pos"], out["open_neg"] = openness(dtm, res, radius_m=radius)
     out = {k: np.where(valid, v, np.nan).astype("float32") for k, v in out.items()}
     out["valid"] = valid.astype("float32")
     return out, profile
@@ -119,7 +124,12 @@ def fit_normalization(
 
 
 def features_dir(params: dict, norm: dict) -> Path:
-    key = {"terrain": params["terrain"], "features": params.get("features", {}), "norm": norm}
+    key = {
+        "channels": list(CHANNELS),
+        "terrain": params["terrain"],
+        "features": params.get("features", {}),
+        "norm": norm,
+    }
     return processed_dir("stage_b") / params_hash(key)
 
 

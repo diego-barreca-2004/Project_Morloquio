@@ -182,7 +182,13 @@ def _b_norm_run(ctx, _):
 
 
 def _b_norm_done(ctx, _):
-    return (_b_dir(ctx) / "norm.json").exists()
+    from morloquio.stage_b.features import CHANNELS
+
+    path = _b_dir(ctx) / "norm.json"
+    if not path.exists():
+        return False
+    # canali aggiunti o tolti dopo la stima: da rifare, altrimenti build_features cerca chiavi che non ci sono
+    return set(json.loads(path.read_text())["norm"]) == set(CHANNELS) - {"valid"}
 
 
 def _b_norm(ctx) -> dict[str, tuple[float, float]]:

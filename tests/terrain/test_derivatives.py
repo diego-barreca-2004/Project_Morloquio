@@ -12,6 +12,7 @@ from morloquio.terrain.derivatives import (
     flow_accumulation,
     hillshade_multi,
     local_relief,
+    openness,
     slope_deg,
 )
 
@@ -114,6 +115,26 @@ def cube(monkeypatch, tmp_path):
             ds.write(arr, 1)
     (d / "meta.json").write_text(json.dumps({"tile_id": "N3807E01567", "tier": "T1"}))
     return d
+
+
+def test_openness_is_slope_independent_and_finds_trenches_and_ridges():
+    flat = np.zeros((80, 80), "float32")
+    pos, neg = openness(flat, RES, radius_m=10.0)
+    assert np.allclose(pos[20:60, 20:60], 90) and np.allclose(neg[20:60, 20:60], 90)
+    pos, neg = openness(_plane(30, (80, 80)), RES, radius_m=10.0)
+    # su un versante uniforme di 30° resta entro 3° da 90 (bias della discretizzazione delle direzioni: 2,1°),
+    # contro più di 10° in una trincea: la pendenza quasi non conta, a differenza dell'ombreggiatura
+    assert np.abs(pos[20:60, 20:60] - 90).max() < 3.0
+    trench = flat.copy()
+    trench[:, 39:42] = -2.0
+    pos, _ = openness(trench, RES, radius_m=10.0)
+    assert pos[40, 40] < 80 and abs(pos[40, 10] - 90) < 1
+    _, neg = openness(-trench, RES, radius_m=10.0)  # cresta
+    assert neg[40, 40] < 80
+    hole = flat.copy()
+    hole[0:5, 0:5] = np.nan
+    pos, neg = openness(hole, RES, radius_m=10.0)
+    assert np.isnan(pos[0, 0]) and np.isfinite(pos[10:, 10:]).all()
 
 
 def test_compute_tile_writes_all_layers(cube):

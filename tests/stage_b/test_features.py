@@ -35,6 +35,20 @@ def test_trench_stands_out_in_relief_channels(two_cubes, params):
     assert raw["lrm_lin"][:, 80].mean() > 3 * raw["lrm_lin"][:, 120].mean()
 
 
+def test_openness_marks_the_trench(two_cubes, params):
+    raw = raw_channels(TILES[1], params)
+    assert raw["open_pos"][40:120, 80].mean() < raw["open_pos"][40:120, 120].mean() - 3
+
+
+def test_features_dir_changes_with_channel_list(monkeypatch, two_cubes, params):
+    from morloquio.stage_b import features
+
+    norm = {"slope": (0.0, 1.0)}
+    a = features.features_dir(params, norm)
+    monkeypatch.setattr(features, "CHANNELS", features.CHANNELS[:-3] + ("valid",))
+    assert features.features_dir(params, norm) != a  # canali diversi: mai riusare feature vecchie
+
+
 def test_missing_gps_gives_zero_channel(two_cubes, params):
     raw = raw_channels(TILES[0], params, gps_xy=None)
     assert np.nanmax(raw["gps"]) == 0

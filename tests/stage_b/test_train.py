@@ -9,7 +9,7 @@ from shapely.geometry import LineString, box
 
 from morloquio.common.paths import processed_dir
 from morloquio.stage_b.dataset import PatchDataset
-from morloquio.stage_b.features import build_features, fit_normalization
+from morloquio.stage_b.features import CHANNELS, build_features, fit_normalization
 from morloquio.stage_b.labels import build_labels
 from morloquio.stage_b.predict import predict_array, predict_tile
 from morloquio.stage_b.train import train_fold
@@ -71,7 +71,7 @@ def test_patch_sampler_hits_positives(tiny):
     ds = PatchDataset(dirs, patch=64, length=12, positive_fraction=1.0, augment=True, channel_dropout=0.0, seed=1)
     for i in range(len(ds)):
         x, target, weight = ds[i]
-        assert x.shape == (14, 64, 64) and target.shape == weight.shape == (1, 64, 64)
+        assert x.shape == (len(CHANNELS), 64, 64) and target.shape == weight.shape == (1, 64, 64)
         assert target.sum() > 0 and torch.isfinite(x).all()
 
 

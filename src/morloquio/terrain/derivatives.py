@@ -82,6 +82,51 @@ def curvatures(dtm: np.ndarray, res: float) -> tuple[np.ndarray, np.ndarray]:
     return prof.astype("float32"), plan.astype("float32")
 
 
+def _shift(z: np.ndarray, dr: int, dc: int) -> np.ndarray:
+    """``out[r, c] = z[r + dr, c + dc]``, NaN fuori dal raster."""
+    h, w = z.shape
+    out = np.full_like(z, np.nan)
+    rs, re_ = max(0, -dr), min(h, h - dr)
+    cs, ce = max(0, -dc), min(w, w - dc)
+    if rs < re_ and cs < ce:
+        out[rs:re_, cs:ce] = z[rs + dr : re_ + dr, cs + dc : ce + dc]
+    return out
+
+
+def openness(dtm: np.ndarray, res: float, radius_m: float = 10.0, n_dir: int = 16) -> tuple[np.ndarray, np.ndarray]:
+    """Openness positiva e negativa (gradi) entro ``radius_m`` su ``n_dir`` direzioni (Yokoyama 2002, parametri RVT).
+
+    90° su qualunque superficie piana, anche inclinata: non dipende dalla pendenza, a differenza dell'ombreggiatura.
+    Positiva < 90° in solchi e trincee, negativa < 90° su creste e cigli. Le direzioni senza dati contano come
+    orizzonte piatto.
+    """
+    z = dtm.astype("float64")
+    r = max(1, int(round(radius_m / res)))
+    pos = np.zeros_like(z)
+    neg = np.zeros_like(z)
+    for a in np.arange(n_dir) * 2 * np.pi / n_dir:
+        hi = np.full_like(z, -np.inf)
+        lo = np.full_like(z, np.inf)
+        seen = set()
+        for k in range(1, r + 1):
+            dc, dr = int(round(k * np.cos(a))), int(round(-k * np.sin(a)))
+            if (dr, dc) in seen or (dr, dc) == (0, 0):
+                continue
+            seen.add((dr, dc))
+            with np.errstate(invalid="ignore"):
+                ang = np.degrees(np.arctan((_shift(z, dr, dc) - z) / (np.hypot(dr, dc) * res)))
+            hi = np.fmax(hi, ang)
+            lo = np.fmin(lo, ang)
+        pos += 90.0 - np.where(np.isfinite(hi), hi, 0.0)
+        neg += 90.0 + np.where(np.isfinite(lo), lo, 0.0)
+    pos /= n_dir
+    neg /= n_dir
+    missing = np.isnan(z)
+    pos[missing] = np.nan
+    neg[missing] = np.nan
+    return pos.astype("float32"), neg.astype("float32")
+
+
 def canopy_height(dsm_first: np.ndarray, dtm: np.ndarray) -> np.ndarray:
     chm = dsm_first.astype("float32") - dtm.astype("float32")
     return np.where(np.isnan(chm), np.nan, np.maximum(chm, 0.0)).astype("float32")

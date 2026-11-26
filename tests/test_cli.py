@@ -184,6 +184,19 @@ def test_b_vectorize_redone_when_params_change(monkeypatch, dirs):
     assert cli._b_vectorize_done(ctx, tile) is False  # soglia cambiata: da rifare
 
 
+def test_b_norm_redone_when_channels_change(dirs):
+    from morloquio.stage_b.features import CHANNELS
+
+    ctx = cli.RunContext(aoi=cli.load_aoi("morloquio"), run_id="r1", params=cli.stage_params())
+    (ctx.run_dir / "stage_b").mkdir(parents=True)
+    current = {c: [0.0, 1.0] for c in CHANNELS if c != "valid"}
+    (ctx.run_dir / "stage_b" / "norm.json").write_text(json.dumps({"norm": current}))
+    assert cli._b_norm_done(ctx, None) is True
+    old = {k: v for k, v in current.items() if k != "open_pos"}
+    (ctx.run_dir / "stage_b" / "norm.json").write_text(json.dumps({"norm": old}))
+    assert cli._b_norm_done(ctx, None) is False
+
+
 def test_b_predict_skips_without_model(dirs):
     ctx = cli.RunContext(aoi=cli.load_aoi("morloquio"), run_id="r1", params=cli.stage_params())
     (ctx.run_dir / "stage_b").mkdir(parents=True)
